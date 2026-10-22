@@ -57,7 +57,8 @@ const TIPOS = {
 http.createServer((req, res) => {
   const u = new URL(req.url, "http://localhost");
   if (rotas[u.pathname]) { req.query = Object.fromEntries(u.searchParams); return rotas[u.pathname](req, res); }
-  const f = path.join(WEB, u.pathname === "/" ? "index.html" : decodeURIComponent(u.pathname));
+  // pasta (ex.: /baixar/) abre o index.html dela, como na Vercel
+  const f = path.join(WEB, u.pathname.endsWith("/") ? decodeURIComponent(u.pathname) + "index.html" : decodeURIComponent(u.pathname));
   // só serve o que está dentro de web/, nunca o código do servidor, as funções nem o node_modules
   const ok = f.startsWith(WEB + path.sep) && !f.includes("node_modules") && !f.includes(path.sep + "api" + path.sep) &&
              !f.includes(path.sep + "db" + path.sep) &&

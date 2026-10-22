@@ -30,7 +30,8 @@
   // Modo prévia: só no servidor local desta máquina (node servidor_local.js --previa), para testar as telas
   // com o dado real sem a senha de ninguém. ?previa=gerente | supervisor-4 | rca-1234. Fora do localhost não existe.
   var PREVIA = null;
-  if (/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) {
+  // só no servidor local (http://localhost:3104); o app nativo também é "localhost", mas em https/capacitor
+  if (/^(localhost|127\.0\.0\.1)$/.test(location.hostname) && location.protocol === "http:" && !CFG.nativo) {
     try {
       var q = new URLSearchParams(location.search).get("previa");
       if (q) sessionStorage.setItem("sup-lube-previa", q);

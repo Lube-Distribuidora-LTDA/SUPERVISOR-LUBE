@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Baixar o Supervisor Lube</title>
+<meta name="description" content="Instale o app Supervisor Lube no Android ou no iPhone.">
+<meta name="theme-color" content="#08122b">
+<meta property="og:title" content="Supervisor Lube — app da Lube Distribuidora">
+<meta property="og:description" content="Venda do dia, carteira, clientes, curva ABC, inadimplência e devolução no celular.">
+<meta property="og:image" content="https://supervisor-lube.vercel.app/icones/icone-512.png">
+<link rel="icon" type="image/png" href="../icones/icone-192.png">
+<link rel="stylesheet" href="../fonts/fonts.css">
+<link rel="stylesheet" href="../css/app.css">
+<style>
+  .baixar { width: 100%; max-width: 420px; display: flex; flex-direction: column; gap: 16px; }
+  .baixar .marca { display: flex; flex-direction: column; align-items: center; gap: 14px; text-align: center; }
+  .baixar .marca img.icone { width: 96px; height: 96px; border-radius: 22px; box-shadow: 0 18px 40px -16px rgba(0,0,0,.7), 0 0 0 1px var(--gold-line); }
+  .baixar h1 { margin: 0; font: 800 26px/1.1 var(--f-display); }
+  .baixar .marca p { margin: 0; color: var(--muted); }
+  .baixar .card { display: flex; flex-direction: column; gap: 10px; }
+  .baixar .card h2 { margin: 0; font: 800 17px var(--f-display); display: flex; align-items: center; gap: 8px; }
+  .baixar ol { margin: 0; padding-left: 20px; color: var(--ink-2); display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
+  .baixar .btn { display: grid; place-items: center; text-decoration: none; }
+  .baixar .versao { text-align: center; color: var(--muted); font: 600 12px var(--f-num); }
+</style>
+</head>
+<body>
+<div class="tela">
+  <div class="baixar">
+    <div class="marca">
+      <img class="icone" src="../icones/icone-192.png" alt="Ícone do Supervisor Lube" width="96" height="96">
+      <h1>Supervisor Lube</h1>
+      <p>Venda do dia, carteira, clientes, curva ABC, inadimplência e devolução — no seu celular.</p>
+    </div>
+
+    <div class="card">
+      <h2>Android</h2>
+      <a class="btn cheio" id="btn-apk" href="supervisor-lube.apk" download="Supervisor Lube.apk">Baixar o app</a>
+      <ol>
+        <li>Toque em <b>Baixar o app</b> e depois abra o arquivo baixado.</li>
+        <li>Se o celular pedir, permita <b>instalar apps desta fonte</b>.</li>
+        <li>Se o Play Protect avisar, toque em <b>Instalar mesmo assim</b> — o app é da Lube e não está na Play Store.</li>
+        <li>Abra o <b>Supervisor Lube</b> e entre com o seu e-mail e senha (ou <b>Primeiro acesso</b>).</li>
+      </ol>
+    </div>
+
+    <div class="card">
+      <h2>iPhone</h2>
+      <ol>
+        <li>Abra <b>supervisor-lube.vercel.app</b> no <b>Safari</b>.</li>
+        <li>Toque em <b>Compartilhar</b> e depois em <b>Adicionar à Tela de Início</b>.</li>
+        <li>Abra pelo ícone da Lube e entre com o seu e-mail e senha.</li>
+      </ol>
+    </div>
+
+    <div class="versao" id="versao"></div>
+    <div class="rodape" style="text-align:center;color:var(--muted);font-size:12px">Dúvidas: TI da Lube — cpd@lube.com.br</div>
+  </div>
+</div>
+<script>
+  fetch('../versao-app.json', { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; }).then(function (v) {
+    if (v && v.versao) document.getElementById('versao').textContent = 'Versão ' + v.versao + (v.publicado ? ' · ' + v.publicado.split('-').reverse().join('/') : '');
+  }).catch(function () {});
+</script>
+</body>
+</html>

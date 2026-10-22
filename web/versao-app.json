@@ -1,0 +1,7 @@
+{
+  "versionCode": 1,
+  "versao": "1.0",
+  "apk": "/baixar/supervisor-lube.apk",
+  "publicado": "2026-10-22",
+  "nota": "O app nativo compara o versionCode dele com este: menor = mostra o aviso para baixar a versao nova. Suba junto com o APK novo em baixar/."
+}

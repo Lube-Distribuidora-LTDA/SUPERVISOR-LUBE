@@ -23,3 +23,6 @@ app/android/.idea/
 app/ios/App/build/
 app/ios/App/DerivedData/
 app/apk/
+
+# telas copiadas para dentro do APK (geradas pelo preparar-web.js)
+app/www/

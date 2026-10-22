@@ -25,6 +25,21 @@
     {
       "source": "/manifest.webmanifest",
       "headers": [{ "key": "Content-Type", "value": "application/manifest+json" }]
+    },
+    {
+      "source": "/versao-app.json",
+      "headers": [
+        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        { "key": "Cache-Control", "value": "no-cache" }
+      ]
+    },
+    {
+      "source": "/baixar/(.*)\\.apk",
+      "headers": [
+        { "key": "Content-Type", "value": "application/vnd.android.package-archive" },
+        { "key": "Content-Disposition", "value": "attachment; filename=\"Supervisor Lube.apk\"" },
+        { "key": "Cache-Control", "value": "no-cache" }
+      ]
     }
   ]
 }

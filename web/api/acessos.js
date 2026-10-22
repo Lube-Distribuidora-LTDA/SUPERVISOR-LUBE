@@ -11,6 +11,7 @@
 "use strict";
 const { consultar, json, semConfiguracao, erroBanco } = require("./_db.js");
 const { sessao, painel } = require("./_sessao.js");
+const { cors } = require("./_cors.js");
 
 function lerCorpo(req) {
   if (req.body && typeof req.body === "object") return Promise.resolve(req.body);
@@ -21,6 +22,7 @@ function lerCorpo(req) {
 }
 
 module.exports = async (req, res) => {
+  if (cors(req, res)) return;
   if (semConfiguracao(res)) return;
   let s;
   try { s = await sessao(req); }

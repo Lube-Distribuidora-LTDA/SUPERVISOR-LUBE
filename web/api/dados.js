@@ -16,6 +16,7 @@
 const zlib = require("zlib");
 const { consultar, json, semConfiguracao, erroBanco } = require("./_db.js");
 const { sessao } = require("./_sessao.js");
+const { cors } = require("./_cors.js");
 
 /* o RCA só leva as linhas dele (os índices seguem a ordem montada em supervisor.pacote_setor) */
 function filtrarRca(p, codusur, nome) {
@@ -45,6 +46,7 @@ function filtrarRca(p, codusur, nome) {
 }
 
 module.exports = async (req, res) => {
+  if (cors(req, res)) return;
   if (req.method !== "GET") return json(res, 405, { erro: "metodo" });
   if (semConfiguracao(res)) return;
 
@@ -95,7 +97,6 @@ module.exports = async (req, res) => {
     res.statusCode = 200;
     res.setHeader("Content-Type", "application/json; charset=utf-8");
     res.setHeader("Content-Encoding", "gzip");
-    res.setHeader("Vary", "Authorization");
     return res.end(corpo);
   } catch (e) {
     return erroBanco(res, e);

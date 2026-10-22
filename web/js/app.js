@@ -58,7 +58,7 @@ const S = {
   d: { per: 'mes', open: 0 },
   adm: { filtro: 'pendente', dados: null, carregando: false, erro: '' },
 };
-let conta = null, D = null, R = null, baixando = false, ultimaConferencia = 0, offline = false, instalar = null;
+let conta = null, D = null, R = null, baixando = false, ultimaConferencia = 0, offline = false, instalar = null, appNovo = null;
 try { const sv = JSON.parse(localStorage.getItem('sup-lube-tela') || '{}'); if (sv.tab) S.tab = sv.tab; } catch (e) { /* sem armazenamento */ }
 function salvarTela() { try { localStorage.setItem('sup-lube-tela', JSON.stringify({ tab: S.tab === 'acessos' ? 'vendas' : S.tab })); } catch (e) { /* ignora */ } }
 
@@ -702,7 +702,8 @@ function render(topo) {
   } else {
     if (!TABS.some(t => t[0] === S.tab)) S.tab = 'vendas';
     $('#tabs').innerHTML = abas();
-    const faixa = offline ? '<div class="faixa">Sem conexão: mostrando a última cópia guardada no aparelho.</div>' : '';
+    const faixa = (offline ? '<div class="faixa">Sem conexão: mostrando a última cópia guardada no aparelho.</div>' : '') +
+      (appNovo ? `<button type="button" class="faixa info" data-a="baixar-app" style="width:100%;text-align:left;cursor:pointer">Nova versão do app (${esc(appNovo.versao)}) — toque para baixar e instalar.</button>` : '');
     try { view.innerHTML = faixa + TABS.find(t => t[0] === S.tab)[2](); }
     catch (e) { console.error(e); view.innerHTML = `<div class="msg bad">Algo deu errado ao montar esta tela: ${esc(e.message)}. Toque em outra aba ou atualize.</div>`; }
   }
@@ -726,7 +727,7 @@ const ICM = {
   sair: '<path d="M15 4h4v16h-4"/><path d="M10 8l-4 4 4 4M6 12h10"/>',
 };
 function abrirMenu() {
-  const ios = /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.matchMedia('(display-mode: standalone)').matches && !navigator.standalone;
+  const ios = !CFG.nativo && /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.matchMedia('(display-mode: standalone)').matches && !navigator.standalone;
   const pend = S.adm.dados ? S.adm.dados.contas.filter(c => c.situacao === 'pendente').length : null;
   $('#folha').innerHTML = `
     <div class="quem"><span class="conta-btn">${esc(iniciais(conta.nome || conta.email))}</span><div><b>${esc(conta.nome || conta.email)}</b><span>${esc(conta.email || '')} · ${esc($('#perfil-rotulo').textContent)}</span></div></div>
@@ -737,9 +738,10 @@ function abrirMenu() {
     <button type="button" class="item sair" data-a="m-sair"><svg viewBox="0 0 24 24">${ICM.sair}</svg>Sair</button>
     <div class="versao">Supervisor Lube · versão ${esc(CFG.versao)}</div>`;
   $('#veu').hidden = false; $('#folha').hidden = false;
-  if (conta.admin && !S.adm.dados && !S.adm.carregando) carregarAcessos().then(() => { if (!$('#folha').hidden) abrirMenu(); });
+  // uma tentativa por abertura do menu: se falhar, o erro fica na aba Acessos (não tenta de novo em laço)
+  if (conta.admin && !S.adm.dados && !S.adm.carregando && !S.adm.erro) carregarAcessos().then(() => { if (!$('#folha').hidden && S.adm.dados) abrirMenu(); });
 }
-function fecharMenu() { $('#veu').hidden = true; $('#folha').hidden = true; }
+function fecharMenu() { $('#veu').hidden = true; $('#folha').hidden = true; if (!S.adm.dados) S.adm.erro = ''; }
 
 /* ---------------- carregar ---------------- */
 function chaveCache(escopo) { return (conta && conta.email || '') + '|' + escopo; }
@@ -842,6 +844,7 @@ document.addEventListener('click', e => {
     case 'm-acessos': fecharMenu(); S.tab = 'acessos'; render(true); carregarAcessos(); return;
     case 'm-instalar': fecharMenu(); if (instalar) { instalar.prompt(); instalar = null; } return;
     case 'm-sair': fecharMenu(); IDB.limpar(); D = null; R = null; conta = null; S.escopo = null; A.sair(); return;
+    case 'baixar-app': if (appNovo) location.href = CFG.site + appNovo.apk; return;
     default: return;
   }
   render(topo);
@@ -921,8 +924,31 @@ window.SUP_APP = {
   },
 };
 
-if ('serviceWorker' in navigator && location.protocol === 'https:') {
+/* ---------------- app nativo (APK / iPhone) ---------------- */
+// As telas já estão dentro do aparelho: o service worker só serve ao site no navegador.
+if (!CFG.nativo && 'serviceWorker' in navigator && location.protocol === 'https:') {
   navigator.serviceWorker.register('sw.js').catch(() => { /* sem cache offline do app, segue normal */ });
 }
+if (CFG.nativo) try {
+  const P = (window.Capacitor && window.Capacitor.Plugins) || {};
+  // botão "voltar" do Android: navega dentro do app; só minimiza quando já está em Vendas
+  if (P.App && P.App.addListener) {
+    P.App.addListener('backButton', () => {
+      if (!$('#folha').hidden) { fecharMenu(); return; }
+      if (!$('#tela-app').hidden) {
+        if (S.tab === 'cliente' && S.k.volta) { S.tab = S.k.volta; S.k.volta = null; S.k.cod = null; S.k.raw = ''; render(true); return; }
+        if (S.tab !== 'vendas') { S.tab = 'vendas'; render(true); return; }
+      }
+      if (P.App.minimizeApp) P.App.minimizeApp(); else if (P.App.exitApp) P.App.exitApp();
+    });
+  }
+  // versão nova do APK: o site publica versao-app.json; quem tem um número de build menor vê o aviso.
+  // O APK 1.0 (que só abria o site) não tem o plugin App: conta como build 1.
+  const minhaBuild = P.App && P.App.getInfo ? P.App.getInfo().then(i => Number(i && i.build) || 1).catch(() => 1) : Promise.resolve(1);
+  minhaBuild.then(build => fetch(CFG.site + '/versao-app.json', { cache: 'no-store' })
+    .then(r => r.ok ? r.json() : null)
+    .then(v => { if (v && Number(v.versionCode) > build && v.apk) { appNovo = v; if (conta) render(false); } }))
+    .catch(() => { /* sem rede: confere na próxima abertura */ });
+} catch (e) { /* recurso nativo indisponível nesta versão: o app segue normal */ }
 A.iniciar();
 })();
