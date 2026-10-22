@@ -1,7 +1,8 @@
 {
-  "versionCode": 3,
-  "versao": "1.2",
+  "versionCode": 4,
+  "versao": "1.3",
   "apk": "/baixar/supervisor-lube.apk",
   "publicado": "2026-10-22",
+  "notas": "Novidades: logo nova, aviso de versão nova em alerta e o aviso de conexão corrigido.",
   "nota": "O app nativo compara o versionCode dele com este: menor = mostra o aviso para baixar a versao nova. Suba junto com o APK novo em baixar/. Desde a 1.3: 'notas' (texto curto) aparece no alerta; 'obrigatoria': true tira o botao Depois."
 }
