@@ -1,5 +1,15 @@
 apply plugin: 'com.android.application'
 
+// Assinatura do APK da Lube. A chave e a senha NUNCA vão para o repositório: ficam em
+// android/assinatura.properties (fora do Git) apontando para o arquivo .p12, guardado nesta máquina e
+// com cópia no P:. Sem o arquivo, o build release sai sem assinatura (e o Android não instala).
+// Perder a chave = o próximo APK não instala por cima (tem de desinstalar o antigo primeiro).
+def assinaturaArq = rootProject.file('assinatura.properties')
+def assinatura = new Properties()
+if (assinaturaArq.exists()) {
+    assinaturaArq.withInputStream { assinatura.load(it) }
+}
+
 android {
     namespace = "br.com.lube.supervisor"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -16,8 +26,22 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        lube {
+            if (assinaturaArq.exists()) {
+                storeFile file(assinatura['storeFile'])
+                storePassword assinatura['storePassword']
+                keyAlias assinatura['keyAlias']
+                keyPassword assinatura['keyPassword']
+                storeType 'pkcs12'
+            }
+        }
+    }
     buildTypes {
         release {
+            if (assinaturaArq.exists()) {
+                signingConfig signingConfigs.lube
+            }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
