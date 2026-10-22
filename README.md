@@ -91,8 +91,8 @@ O modo prévia só existe no servidor local: na Vercel a variável `SUP_MODO_PRE
   Lube, em tela cheia, e abre sem internet com a última cópia.
 - **Android:** o APK da casca (`app/`) abre o app publicado. Também dá para instalar pelo Chrome (menu → Instalar app).
 - **Gerar o APK de novo** (só precisa quando mudar ícone, nome ou a casca — o conteúdo vem do site publicado):
-  ferramentas em `%LOCALAPPDATA%\LubeAndroid` (Java 21 da Microsoft e Android SDK 36, instalados em 2026-10-22), chave em
-  `%LOCALAPPDATA%\LubeAndroid\assinatura\supervisor-lube.p12` com cópia em `P:\INTEGRAÇÃO BI\SUPERVISOR\4 - ASSINATURA ANDROID`
+  ferramentas em `%USERPROFILE%\LubeAndroid` (Java 21 da Microsoft e Android SDK 36, instalados em 2026-10-22), chave em
+  `%USERPROFILE%\LubeAndroid\assinatura\supervisor-lube.p12` com cópia em `P:\INTEGRAÇÃO BI\SUPERVISOR\4 - ASSINATURA ANDROID`
   (o `app/android/assinatura.properties` aponta para ela e **não vai para o Git**). Suba o `versionCode` em
   `app/android/app/build.gradle` e rode, com `JAVA_HOME` e `ANDROID_HOME` apontando para lá:
   `cd app/android` e `gradlew assembleRelease`. O APK sai em `app/android/app/build/outputs/apk/release/`.

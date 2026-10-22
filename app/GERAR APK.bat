@@ -3,8 +3,8 @@ rem ===========================================================================
 rem  GERAR APK - Supervisor Lube (Android)
 rem
 rem  Compila o APK assinado com a chave da Lube. Precisa:
-rem    - Java 21 e Android SDK em %LOCALAPPDATA%\LubeAndroid (instalados em 2026-10-22)
-rem    - a chave em %LOCALAPPDATA%\LubeAndroid\assinatura (copia no P:, pasta
+rem    - Java 21 e Android SDK em %USERPROFILE%\LubeAndroid (instalados em 2026-10-22)
+rem    - a chave em %USERPROFILE%\LubeAndroid\assinatura (copia no P:, pasta
 rem      "4 - ASSINATURA ANDROID") e o android\assinatura.properties apontando para ela
 rem
 rem  So precisa rodar quando mudar icone, nome ou a casca: o conteudo do app vem
@@ -13,11 +13,11 @@ rem  android\app\build.gradle.
 rem  O APK sai em android\app\build\outputs\apk\release\app-release.apk e e
 rem  copiado para Downloads\Supervisor Lube.apk.
 rem
-rem  Tudo o que aparece na tela tambem vai para %LOCALAPPDATA%\LubeAndroid\gerar-apk.log:
+rem  Tudo o que aparece na tela tambem vai para %USERPROFILE%\LubeAndroid\gerar-apk.log:
 rem  se der erro, o Claude le de la (nao precisa de print).
 rem ===========================================================================
 setlocal
-set "L=%LOCALAPPDATA%\LubeAndroid"
+set "L=%USERPROFILE%\LubeAndroid"
 set "LOG=%L%\gerar-apk.log"
 set "JAVA_HOME=%L%\java\jdk-21.0.12.1+1"
 set "ANDROID_HOME=%L%\sdk"
