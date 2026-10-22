@@ -1,0 +1,44 @@
+SUPERVISOR LUBE - LEIA-ME
+=========================
+
+O que e: o app do supervisor, do RCA e do gerente (Android, iPhone e navegador), com
+venda do dia (pedido digitado e faturado), carteira, ficha do cliente, curva ABC,
+inadimplencia e devolucao. O supervisor ve so o setor dele, o RCA so a rota dele e o
+gerente ve tudo.
+
+Caminho: WinThor (Oracle) -> ETL em Python (VM SRV-IA) -> Supabase, projeto
+DATA WAREHOUSE, schema "supervisor" -> app na Vercel (supervisor-lube).
+
+Esta carga leva so o que o BI COMERCIAL ainda nao carrega:
+  cliente      PCCLIENT: carteira (CODUSUR1), endereco, telefone, ramo, prazo, limite, bloqueio
+  titulo       PCPREST em aberto (filiais 1, 7, 10, 11 e 12)
+  pedido       PCPEDC: pedido digitado, sem cancelado e sem bonificacao (venda do dia)
+  venda_item   PCMOV por mes x cliente x produto x RCA (curva ABC e ultimas compras)
+A venda faturada e as devolucoes vem do BI COMERCIAL (comercial.fato_comissao_nf e
+comercial.fato_devolucao), sem copiar.
+
+Pastas
+  1 - CONFIGURACAO          o ENV (senhas do Oracle e do Supabase) e o ENV.example
+  2 - SISTEMA SUPERVISOR    os scripts do ETL
+  3 - INSTALACAO            o instalador (instalar_e_agendar.ps1)
+
+O que rodar
+  INSTALAR TUDO.bat    uma vez, NA VM SRV-IA: copia o ETL para C:\BI\SUPERVISOR, cria as
+                       tarefas "Supervisor - Pedidos" (de 30 em 30 minutos, das 07:00 as
+                       22:00) e "Supervisor - Completo" (06:20, 11:20, 15:20 e 18:20) e roda
+                       uma carga completa de teste. Rode de novo sempre que o horario ou o
+                       codigo mudar.
+  ATUALIZAR AGORA.bat  quando quiser o dado na hora: copia o ETL e roda uma carga
+                       completa, sem mexer no agendamento.
+
+A carga entrou?
+  Nao confie no log da tela. Consulte supervisor.controle_carga no Supabase (projeto
+  DATA WAREHOUSE): cada passo grava uma linha (OK, AVISO ou ERRO).
+    conferencia_titulo   banco x PCPREST, cobranca a cobranca, na mesma foto do Oracle
+    conferencia_venda    venda por item do mes fechado x BI COMERCIAL, setor a setor
+    pacote               os pacotes que o app baixa (um por setor + o resumo do gerente)
+
+Problemas
+  - "a tarefa rodou e nada aconteceu": veja C:\BI\SUPERVISOR\falha_inicial.log
+  - "Ja existe uma carga rodando": outra maquina (ou o ATUALIZAR AGORA) esta com a
+    carga na mao; esta rodada foi pulada de proposito.

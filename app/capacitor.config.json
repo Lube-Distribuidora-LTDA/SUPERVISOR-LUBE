@@ -1,0 +1,19 @@
+{
+  "appId": "br.com.lube.supervisor",
+  "appName": "Supervisor Lube",
+  "webDir": "www",
+  "server": {
+    "url": "https://supervisor-lube.vercel.app",
+    "cleartext": false,
+    "errorPath": "erro.html"
+  },
+  "android": {
+    "backgroundColor": "#050b1c",
+    "allowMixedContent": false
+  },
+  "ios": {
+    "backgroundColor": "#050b1c",
+    "contentInset": "never",
+    "limitsNavigationsToAppBoundDomains": false
+  }
+}

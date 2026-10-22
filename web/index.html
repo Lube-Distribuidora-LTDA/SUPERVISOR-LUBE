@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Supervisor Lube</title>
+<meta name="description" content="App do supervisor, do RCA e do gerente da Lube Distribuidora: venda do dia, carteira, cliente, curva ABC, inadimplência e devolução.">
+<meta name="theme-color" content="#08122b">
+<meta name="color-scheme" content="dark light">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Supervisor">
+<meta name="format-detection" content="telephone=no">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icones/icone-192.png">
+<link rel="apple-touch-icon" href="icones/apple-touch-icon.png">
+<link rel="stylesheet" href="fonts/fonts.css">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+
+<!-- abrindo: nunca fica muda (diz o que está fazendo) -->
+<div id="tela-carregando" class="tela">
+  <div class="carregando">
+    <span class="placa"><img src="logo-lube.png" alt="Lube Distribuidora" width="120" height="40"></span>
+    <div class="pulso"><i></i></div>
+    <div class="motivo" id="carregando-motivo">Abrindo o Supervisor Lube…</div>
+  </div>
+</div>
+
+<!-- entrada -->
+<div id="tela-login" class="tela" hidden>
+  <div class="gate">
+    <div class="marca">
+      <span class="placa"><img src="logo-lube.png" alt="Lube Distribuidora" width="138" height="46"></span>
+      <h1>Supervisor Lube</h1>
+      <p>Venda, carteira e clientes do seu setor, na palma da mão.</p>
+    </div>
+    <div class="card">
+      <div class="modos" id="gate-modos" role="group" aria-label="Entrar ou primeiro acesso">
+        <button type="button" data-modo="entrar" aria-pressed="true">Entrar</button>
+        <button type="button" data-modo="cadastro" aria-pressed="false">Primeiro acesso</button>
+      </div>
+
+      <form id="form-entrar" data-form="entrar" autocomplete="on" novalidate>
+        <div class="fld"><label for="l-email">E-mail</label><input id="l-email" type="email" inputmode="email" autocomplete="username" autocapitalize="none" spellcheck="false" required></div>
+        <div class="fld"><label for="l-senha">Senha</label><input id="l-senha" type="password" autocomplete="current-password" required></div>
+        <button class="btn cheio" type="submit" id="btn-entrar">Entrar</button>
+        <button class="link" type="button" id="btn-esqueci">Esqueci a senha</button>
+      </form>
+
+      <form id="form-cadastro" data-form="cadastro" autocomplete="on" novalidate hidden>
+        <div class="fld"><label for="c-nome">Seu nome</label><input id="c-nome" type="text" autocomplete="name" required></div>
+        <div class="fld"><label for="c-email">E-mail</label><input id="c-email" type="email" inputmode="email" autocomplete="email" autocapitalize="none" spellcheck="false" required></div>
+        <div class="fld"><label for="c-senha">Crie uma senha (mínimo 8)</label><input id="c-senha" type="password" autocomplete="new-password" minlength="8" required></div>
+        <div class="fld"><label for="c-tipo">Você é</label>
+          <select id="c-tipo"><option value="rca">RCA (vendedor)</option><option value="supervisor">Supervisor</option></select></div>
+        <div class="fld" id="c-cod-box"><label for="c-cod">Seu código de RCA no WinThor</label><input id="c-cod" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off"></div>
+        <button class="btn cheio" type="submit" id="btn-cadastrar">Pedir acesso</button>
+        <p class="sub" style="margin:0;text-align:center">O TI confere e libera. Depois é só entrar.</p>
+      </form>
+
+      <form id="form-pedir" data-form="pedir" novalidate hidden>
+        <p class="sub" style="margin:0" id="pedir-texto">Sua conta já existe, mas ainda não tem acesso ao app. Peça abaixo — o TI libera.</p>
+        <div class="fld"><label for="p-tipo">Você é</label>
+          <select id="p-tipo"><option value="rca">RCA (vendedor)</option><option value="supervisor">Supervisor</option></select></div>
+        <div class="fld" id="p-cod-box"><label for="p-cod">Seu código de RCA no WinThor</label><input id="p-cod" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off"></div>
+        <button class="btn cheio" type="submit" id="btn-pedir">Pedir acesso</button>
+        <button class="link" type="button" data-acao="sair">Entrar com outra conta</button>
+      </form>
+
+      <div class="ok" id="gate-ok" hidden>
+        <span class="ic" aria-hidden="true">✓</span>
+        <div id="gate-ok-msg"></div>
+        <button class="link" type="button" data-acao="sair">Voltar para a entrada</button>
+      </div>
+
+      <div class="msg bad" id="gate-erro" role="alert" hidden></div>
+    </div>
+    <div class="rodape">Lube Distribuidora · dúvidas com o TI (cpd@lube.com.br)</div>
+  </div>
+</div>
+
+<!-- app -->
+<div id="tela-app" class="shell" hidden>
+  <div class="app">
+    <header class="top gut">
+      <div class="brand">
+        <span class="placa"><img src="logo-lube.png" alt="Lube" width="90" height="30"></span>
+        <span class="nome">Supervisor Lube<small id="perfil-rotulo">—</small></span>
+        <button type="button" class="conta-btn" id="conta-btn" aria-label="Sua conta">··</button>
+      </div>
+      <div class="setor-row">
+        <div id="setor-box" style="min-width:0"></div>
+        <button type="button" class="when" id="when" aria-label="Horário dos dados"></button>
+      </div>
+    </header>
+    <main id="view" class="gut" aria-live="polite"></main>
+    <nav class="tabs gut" id="tabs" aria-label="Abas"></nav>
+  </div>
+</div>
+
+<div id="veu" class="veu" hidden></div>
+<div id="folha" class="folha" role="dialog" aria-label="Sua conta" hidden></div>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+<script src="js/config.js"></script>
+<script src="js/acesso.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

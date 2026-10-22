@@ -1,0 +1,17 @@
+{
+  "name": "supervisor-lube-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Supervisor Lube - casca nativa (Android e iOS) do app web supervisor-lube (Capacitor)",
+  "scripts": {
+    "sincronizar": "cap sync"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.5.3",
+    "@capacitor/core": "^8.5.3",
+    "@capacitor/ios": "^8.5.3"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.5.3"
+  }
+}

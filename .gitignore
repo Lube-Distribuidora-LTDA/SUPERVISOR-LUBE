@@ -1,0 +1,25 @@
+# segredo nunca sobe
+ENV
+.env
+*.env
+etl/ENV
+**/assinatura/
+**/*.keystore
+**/*.jks
+**/*.p12
+app/android/assinatura.properties
+
+# gerado
+node_modules/
+__pycache__/
+*.log
+_teste_agendador.txt
+.vercel/
+app/android/.gradle/
+app/android/build/
+app/android/app/build/
+app/android/local.properties
+app/android/.idea/
+app/ios/App/build/
+app/ios/App/DerivedData/
+app/apk/

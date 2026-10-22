@@ -1,0 +1,15 @@
+{
+  "name": "supervisor-lube",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Supervisor Lube - app do supervisor, do RCA e do gerente (venda do dia, carteira, cliente, curva ABC, inadimplencia e devolucao) - Lube Distribuidora",
+  "scripts": {
+    "start": "node servidor_local.js"
+  },
+  "engines": {
+    "node": "22.x"
+  },
+  "dependencies": {
+    "pg": "^8.23.1"
+  }
+}
