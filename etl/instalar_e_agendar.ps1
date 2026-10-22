@@ -1,4 +1,4 @@
-﻿﻿param(
+﻿param(
     [switch]$JaElevado,
     [switch]$Conferir,
     [string]$Origem,

@@ -21,4 +21,10 @@ echo   preenchido. E dele que saem as senhas do Oracle e do Supabase.
 echo.
 pause
 
-powershell -ExecutionPolicy Bypass -File "3 - INSTALACAO\instalar_e_agendar.ps1"
+powershell -ExecutionPolicy Bypass -File "3 - INSTALACAO\instalar_e_agendar.ps1"
+
+rem A janela nao fecha sozinha: se aparecer erro (em vermelho), ele fica na tela para ler
+rem ou tirar print. A parte que cria as tarefas continua na janela de administrador.
+echo.
+echo   Esta janela terminou. Se abriu a janela de administrador, acompanhe por la.
+pause
