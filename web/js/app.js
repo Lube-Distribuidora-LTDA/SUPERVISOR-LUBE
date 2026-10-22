@@ -974,7 +974,7 @@ function barra(t) {
   const ant = n ? (n > 1 ? S.pilha[n - 2].titulo : (TABS.find(x => x[0] === S.tab) || TABS[0])[1]) : null;
   $('#nav-esq').innerHTML = ant != null
     ? `<button type="button" class="voltar" data-a="voltar" aria-label="Voltar para ${esc(ant)}">${ic('back')}<span>${esc(curto(ant, 16))}</span></button>`
-    : '<span class="placa mini"><img src="logo-lube.png" alt="Lube" width="60" height="20"></span>';
+    : '<img class="logo mini" src="logo-lube-mini.png" alt="Lube Distribuidora" width="89" height="30">';
   $('#nav-titulo').textContent = t.titulo || '';
   $('#btn-busca').hidden = t.chave === 'busca' || !D;
   $('#conta-btn').textContent = iniciais(conta && (conta.nome || conta.email));

@@ -14,7 +14,7 @@ const path = require("path");
 
 const WEB = path.join(__dirname, "..", "web");
 const WWW = path.join(__dirname, "www");
-const LEVAR = ["index.html", "manifest.webmanifest", "logo-lube.png", "css", "js", "fonts", "icones"];
+const LEVAR = ["index.html", "manifest.webmanifest", "logo-lube.png", "logo-lube-mini.png", "css", "js", "fonts", "icones"];
 
 fs.rmSync(WWW, { recursive: true, force: true });
 fs.mkdirSync(WWW, { recursive: true });

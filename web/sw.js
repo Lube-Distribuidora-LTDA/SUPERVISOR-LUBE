@@ -8,7 +8,7 @@
 const CASCA = 'sup-lube-casca-v3';   // v3: versão 1.3 (2026-10-22)
 const ARQUIVOS = [
   './', 'index.html', 'css/app.css', 'fonts/fonts.css', 'js/config.js', 'js/acesso.js', 'js/app.js',
-  'logo-lube.png', 'manifest.webmanifest', 'icones/icone-192.png', 'icones/icone-512.png',
+  'logo-lube.png', 'logo-lube-mini.png', 'manifest.webmanifest', 'icones/icone-192.png', 'icones/icone-512.png',
   'fonts/Archivo-700.woff2', 'fonts/Archivo-800.woff2', 'fonts/IBMPlexSans-500.woff2', 'fonts/IBMPlexSans-600.woff2',
   'fonts/IBMPlexSans-700.woff2', 'fonts/JetBrainsMono-600.woff2', 'fonts/JetBrainsMono-700.woff2', 'fonts/JetBrainsMono-800.woff2',
 ];

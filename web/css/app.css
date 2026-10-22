@@ -84,10 +84,11 @@ button { cursor: pointer; }
 }
 .app { background: color-mix(in srgb, var(--app) 86%, transparent); min-height: 100dvh; display: flex; flex-direction: column; min-width: 0; overflow-x: clip;
   transition: transform .5s var(--ios), filter .5s var(--ios), clip-path .5s var(--ios); }
-.placa { background: #ffffff; border-radius: 12px; padding: 5px 8px; display: grid; place-items: center; flex: none; box-shadow: 0 6px 20px -8px rgba(0, 0, 0, .6), 0 0 0 1px var(--gold-line); }
-.placa img { height: 30px; width: auto; display: block; }
-.placa.mini { padding: 4px 7px; border-radius: 9px; }
-.placa.mini img { height: 19px; }
+/* logo da Lube transparente, com contorno branco (1.3, pedido do Júlio): sem a placa branca de antes.
+   Duas artes: logo-lube-mini.png (topo, contorno mais grosso para aparecer pequena) e logo-lube.png (entrada).
+   Refazer pelo ferramentas\logo_contorno.py. */
+.logo { display: block; height: 56px; width: auto; flex: none; filter: drop-shadow(0 8px 18px rgba(0, 0, 0, .45)); }
+.logo.mini { height: 30px; filter: drop-shadow(0 3px 8px rgba(0, 0, 0, .4)); }
 
 /* Barra de cima (iPhone): logo ou "‹ voltar", título pequeno que aparece ao rolar, busca e conta.
    O fundo de vidro acende conforme o título grande sai (--p de 0 a 1, posto pelo app.js). */
@@ -377,7 +378,7 @@ main.em-anim { background: var(--app-solid); min-height: 100dvh; box-shadow: -14
 .tela { min-height: 100dvh; display: grid; place-items: center; padding: max(24px, env(safe-area-inset-top, 0px)) 16px max(24px, env(safe-area-inset-bottom, 0px)); }
 .gate { width: 100%; max-width: 400px; display: flex; flex-direction: column; gap: 18px; }
 .gate .marca { display: flex; flex-direction: column; align-items: center; gap: 14px; text-align: center; }
-.gate .marca .placa img { height: 46px; }
+.gate .marca .logo { height: 64px; }
 .gate .marca h1 { margin: 0; font: 800 26px/1.1 var(--f-display); }
 .gate .marca p { margin: 0; color: var(--muted); font-size: 13.5px; }
 .gate .card { display: flex; flex-direction: column; gap: 12px; padding: 18px; }
@@ -402,7 +403,7 @@ main.em-anim { background: var(--app-solid); min-height: 100dvh; box-shadow: -14
 .link { border: 0; background: transparent; color: var(--accent); font: 600 13px var(--f-body); padding: 4px; text-decoration: underline; text-underline-offset: 3px; }
 
 .carregando { display: flex; flex-direction: column; align-items: center; gap: 16px; text-align: center; }
-.carregando .placa img { height: 40px; }
+.carregando .logo { height: 56px; }
 .carregando .pulso { width: 180px; height: 4px; border-radius: 4px; background: var(--surface-3); overflow: hidden; }
 .carregando .pulso i { display: block; width: 40%; height: 100%; background: var(--gold); border-radius: 4px; animation: vai 1.2s ease-in-out infinite alternate; }
 @keyframes vai { from { transform: translateX(-60%); } to { transform: translateX(210%); } }
