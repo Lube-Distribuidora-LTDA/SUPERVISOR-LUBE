@@ -22,6 +22,7 @@
 const CFG = window.SUP_CFG, A = window.SUP_ACESSO;
 const $ = s => document.querySelector(s);
 const REDUZ = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+document.documentElement.classList.toggle('android', /Android/i.test(navigator.userAgent));
 const EASE = 'cubic-bezier(.32,.72,0,1)';   // a curva das telas do iPhone
 
 /* ---------------- utilidades ---------------- */
@@ -66,7 +67,7 @@ const S = {
   // página aberta em cada tela que tem páginas
   pag: { vendas: 'hoje', carteira: 'pos', abc: 'cli', inad: 'resumo', dev: 'resumo', cli: 'resumo', adm: 'regioes' },
   pilha: [], rolagens: [],   // telas empilhadas por cima da aba (cliente, busca, lista completa, supervisores)
-  v: { rca: 0, dia: null, de: null, ate: null, q: 'mes', graf: 'fat' },
+  v: { rca: 0, dia: null, de: null, ate: null, q: 'mes', graf: 'fat', qr: 'mes' },
   c: { mes: null, rca: 0, cid: '', bai: '' },
   k: { raw: '', modo: 'forn' },
   a: { per: 'mes', rca: 0 },
@@ -340,20 +341,29 @@ function vVendas() {
     ${seg('v-graf', V.graf, [['fat', 'Faturado por dia'], ['dig', 'Digitado por dia']])}
     <div class="card">${graficoDias(V.de, V.ate, V.graf, rca, V.dia) || '<span class="muted">Escolha um período com mais de um dia para ver a venda diária.</span>'}</div>`;
   };
+  /* 1.4 (Júlio): filtro "Mês, semana e dia" no ranking dos RCAs; a data escolhida é o fim da janela */
   const rcasPag = () => {
-    const ls = linhasRca(), tot = ls.reduce((a, x) => a + x.p.vl, 0) || 1;
-    const rows = ls.map(({ r, dd, df, p }) => `
+    const ref = V.dia, qr = V.qr || 'mes';
+    const r1 = qr === 'dia' ? ref : qr === 'semana' ? Math.max(D.ini, ref - ((dow(ref) + 6) % 7)) : Math.max(D.ini, mesDe(ref));
+    const na = o => o.d >= r1 && o.d <= ref;
+    const ls = D.ativos.map(r => ({
+      r, f: resumoNf(D.nf.filter(o => na(o) && o.rca === r.cod)), g: resumoPed(D.ped.filter(o => na(o) && o.rca === r.cod)),
+    })).sort((a, b) => b.f.vl - a.f.vl || b.g.vl - a.g.vl);
+    const tot = ls.reduce((a, x) => a + x.f.vl, 0) || 1;
+    const rotulo = qr === 'dia' ? diaLongo(ref) : qr === 'semana' ? `semana de ${dm(r1)} a ${dm(ref)}` : `${nomeMes(ref)}${ref === H ? ' até hoje' : ' até ' + dm(ref)}`;
+    const rows = ls.map(({ r, f: fv, g }) => `
       <button type="button" class="row${r.cod === rca ? ' sel' : ''}" data-a="v-rca" data-v="${r.cod === rca ? 0 : r.cod}">
         <span class="t">${esc(r.nome)} <span class="code">${r.cod}</span></span>
-        <span class="r">${brlK(p.vl)}</span>
-        <span class="sub">Dia: digitado ${brlK(dd.vl)} · faturado ${brlK(df.vl)} · ${dd.ped} ped. ${V.dia === H && !dd.ped && r.ativo ? '<span class="pill warn">sem pedido hoje</span>' : ''}</span>
-        <span class="sub r"><span class="pill ${p.vl && p.mg < .12 ? 'warn' : ''}">margem ${pct(p.mg)}</span></span>
-        <span class="sub full">${p.pos} clientes positivados · ${p.ped} pedidos faturados no período</span>
-        <span class="full">${bar(p.vl / tot)}</span>
+        <span class="r">${brlK(fv.vl)}</span>
+        <span class="sub">faturado · digitado ${brlK(g.vl)} em ${g.ped} ${g.ped === 1 ? 'pedido' : 'pedidos'} ${qr === 'dia' && ref === H && !g.ped ? '<span class="pill warn">sem pedido hoje</span>' : ''}</span>
+        <span class="sub r"><span class="pill ${fv.vl && fv.mg < .12 ? 'warn' : ''}">margem ${pct(fv.mg)}</span></span>
+        <span class="sub full">${fv.pos} clientes positivados · ${fv.ped} pedidos faturados</span>
+        <span class="full">${bar(fv.vl / tot)}</span>
       </button>`);
-    return `<div class="h">Por RCA <small>dia ${dm(V.dia)} · período ${dm(V.de)} a ${dm(V.ate)}</small></div>
+    return `<div class="pilulas">${chips('v-qr', qr, [['mes', 'Mês'], ['semana', 'Semana'], ['dia', 'Dia']])}${pilData('v-dia', qr === 'dia' ? 'Dia' : 'Até', ref)}</div>
+      <div class="h">Por RCA <small>${rotulo}</small></div>
       <div class="list" data-lista="v-rcas">${rows.length ? limitar(rows, 5, 'v-rcas', 'Venda por RCA') : vazio('Nenhum RCA ativo no setor.')}</div>
-      ${avisoInativo(soma(D.nf.filter(o => o.d >= V.de && o.d <= V.ate && !rcaAtivo(o.rca)), o => o.vl), 'de venda faturada no período')}
+      ${avisoInativo(soma(D.nf.filter(o => na(o) && !rcaAtivo(o.rca)), o => o.vl), 'de venda faturada')}
       <div class="nota">Toque num RCA para ver a venda só dele.</div>`;
   };
   const setoresPag = () => {
@@ -919,11 +929,26 @@ function embrulhar(chave, r) {
   const seg2 = ps.length > 1 ? `<div class="segios" role="tablist" style="--n:${ps.length};--i:${i}"><i class="thumb" aria-hidden="true"></i>${ps.map(([id, rot]) => `<button type="button" role="tab" data-a="pag" data-v="${id}" aria-selected="${id === atual}">${rot}</button>`).join('')}</div>` : '';
   return (r.topo || '') + seg2 + `<div class="pagina" data-pag="${atual}">${ps[i][2]()}</div>`;
 }
+/* tela já calculada fica guardada (1.4, Júlio: "está travando bastante entre uma aba e outra"): voltar a uma aba
+   com os mesmos filtros e o mesmo pacote não recalcula nada. Some quando chega pacote novo. */
+const memo = { base: '', m: new Map() };
+function chaveMemo() {
+  if (S.pilha.length || LISTA_TODA || !D) return null;
+  return [S.tab, S.pag[S.tab], conta && conta.tipo, R ? R.gerado : '', JSON.stringify(S.v), JSON.stringify(S.c),
+    JSON.stringify(S.a), S.i.open, JSON.stringify(S.d)].join('|');
+}
 function montarTela() {
   const it = S.pilha[S.pilha.length - 1];
   if (!it) {
     const t = TABS.find(x => x[0] === S.tab) || TABS[0];
-    return { chave: t[0], titulo: t[1], raiz: true, html: D ? embrulhar(t[0], t[2]()) : ESQ };
+    if (!D) return { chave: t[0], titulo: t[1], raiz: true, html: ESQ };
+    const base = S.escopo + '|' + D.gerado;
+    if (memo.base !== base) { memo.base = base; memo.m.clear(); }
+    const k = chaveMemo();
+    if (k && memo.m.has(k)) return memo.m.get(k);
+    const tela = { chave: t[0], titulo: t[1], raiz: true, html: embrulhar(t[0], t[2]()) };
+    if (k) memo.m.set(chaveMemo() || k, tela);   // a chave depois do cálculo (ele completa padrões, como o dia de hoje)
+    return tela;
   }
   if (it.t === 'adm') return telaAdm();
   if (!D) return { chave: it.t, titulo: it.titulo || '', html: ESQ };
@@ -1023,9 +1048,8 @@ function animar(tipo, g) {
       view.animate([{ transform: 'translateX(-28%)' }, { transform: 'translateX(0)' }], o);
     }
   } else if (tipo === 'aba') {
-    view.classList.add('em-anim'); g.style.zIndex = 3; view.style.zIndex = 5;
-    g.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 180, easing: 'ease-out', fill: 'forwards' });
-    view.animate([{ opacity: 0, transform: 'translateY(12px) scale(.985)' }, { opacity: 1, transform: 'none' }], { duration: 380, easing: EASE }).onfinish = limpa;
+    // um só movimento, todo na placa de vídeo (opacidade e deslocamento): leve até em celular simples
+    view.animate([{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }], { duration: 240, easing: EASE });
   } else {
     // troca de página: desliza para o lado do toque
     const p = view.querySelector(':scope > .pagina'), dir = tipo === 'pag+' ? 1 : -1, o = { duration: 360, easing: EASE };
@@ -1060,7 +1084,7 @@ function render(o) {
   if (anim === 'pag+' || anim === 'pag-') {
     const p = view.querySelector(':scope > .pagina'); if (p) g = fotografar(p);
     const sg = view.querySelector(':scope > .segios'); if (sg) segAnt = sg.style.getPropertyValue('--i');
-  } else if (anim) g = fotografar(view);
+  } else if (anim && anim !== 'aba') g = fotografar(view);   // troca de aba não copia a tela velha: só esmaece a nova
   // filtros em pílula que deslizam: guarda onde estavam (senão voltam para o começo a cada toque)
   const rolos = anim ? [] : [...view.querySelectorAll('.pilulas, .chips.rola')].map(x => x.scrollLeft);
   let t;
@@ -1076,13 +1100,29 @@ function render(o) {
   if (o.rolar != null) window.scrollTo(0, o.rolar); else if (o.topo) window.scrollTo(0, 0);
   dockAtualizar();
   if (anim) animar(anim, g);
-  if (anim === 'aba' || anim === 'push') entrar(view);
+  // a cascata de entrada (cartões subindo, barras crescendo) só na primeira vez que o Resumo abre com o pacote
   if (t.chave === 'resumo' && D) {
     const k = S.escopo + '|' + D.gerado;
     if (S.contado !== k) { S.contado = k; entrar(view); contar(view); }
   }
   salvarTela();
   aoRolar();
+}
+/* prepara por trás as outras abas (em tempo livre do celular), para a primeira troca já ser instantânea */
+const agendar = f => (window.requestIdleCallback ? requestIdleCallback(f, { timeout: 2000 }) : setTimeout(f, 150));
+function aquecer() {
+  clearTimeout(aquecer._t);
+  aquecer._t = setTimeout(() => {
+    const fila = TABS.map(t => t[0]).filter(t => t !== S.tab);
+    const passo = () => {
+      if (!D || S.pilha.length || !fila.length) return;
+      const tab = fila.shift(), atual = S.tab;
+      S.tab = tab;
+      try { montarTela(); } catch (e) { /* a aba calcula de novo quando for aberta */ } finally { S.tab = atual; }
+      agendar(passo);
+    };
+    agendar(passo);
+  }, 600);
 }
 function empurrar(item) { S.rolagens[S.pilha.length] = window.scrollY; S.pilha.push(item); render({ anim: 'push', topo: true }); }
 function voltar() { if (!S.pilha.length) return; S.pilha.pop(); render({ anim: 'pop', rolar: S.rolagens[S.pilha.length] || 0 }); }
@@ -1095,9 +1135,12 @@ function irAba(v) {
     return;
   }
   S.tab = v; S.pilha = []; S.rolagens = [];
-  render({ anim: 'aba', topo: true });
+  // a pílula anda na hora do toque; a tela entra no quadro seguinte (o toque nunca espera o cálculo)
+  dockAtualizar();
   const db = $(`#dock-itens button[data-v="${v}"]`);
   if (db && !REDUZ) { db.classList.remove('pulou'); void db.offsetWidth; db.classList.add('pulou'); }
+  const vez = irAba.vez = (irAba.vez || 0) + 1;
+  requestAnimationFrame(() => setTimeout(() => { if (vez === irAba.vez) render({ anim: 'aba', topo: true }); }, 0));
 }
 function irPagina(id) {
   const sg = $('#view > .segios'), atual = S.pag[S.chave];
@@ -1283,7 +1326,7 @@ async function abrirEscopo(escopo, aoMontar) {
   }
 }
 function montarResumo(p) {
-  return { meses: p.meses || [], hoje: p.hoje, setores: (p.setores || []).map(s => ({ cod: s[0], nome: s[1], venda: s[2], cmv: s[3], dev: s[4], vencido: +s[5] || 0, juridico: +s[6] || 0, clientes: s[7] || 0, pos: s[8] || [] })) };
+  return { meses: p.meses || [], hoje: p.hoje, gerado: p.gerado_em || String(Date.now()), setores: (p.setores || []).map(s => ({ cod: s[0], nome: s[1], venda: s[2], cmv: s[3], dev: s[4], vencido: +s[5] || 0, juridico: +s[6] || 0, clientes: s[7] || 0, pos: s[8] || [] })) };
 }
 async function carregarTudo() {
   if (baixando) return; baixando = true; ultimaConferencia = Date.now();
@@ -1299,7 +1342,7 @@ async function carregarTudo() {
       await abrirSetor(Number(conta.codsupervisor));
     } else {
       S.escopo = 'R' + conta.codusur;
-      await abrirEscopo(S.escopo, (p, atualizou) => { D = montar(p); render(); if (atualizou) { S.mudou = true; toast('Dados atualizados.'); } });
+      await abrirEscopo(S.escopo, (p, atualizou) => { D = montar(p); render(); aquecer(); if (atualizou) { S.mudou = true; toast('Dados atualizados.'); } });
     }
   } catch (e) {
     if (!D) $('#view').innerHTML = `<div class="msg bad">${esc(e.message || 'Não consegui carregar os dados.')}</div><button class="btn sec" type="button" data-a="m-atualizar">Tentar de novo</button>`;
@@ -1309,7 +1352,7 @@ async function abrirSetor(cod) {
   const escopo = 'S' + cod;
   if (S.escopo !== escopo) { S.escopo = escopo; D = null; render(); }
   try { localStorage.setItem('sup-lube-setor', String(cod)); } catch (e) { /* ignora */ }
-  await abrirEscopo(escopo, (p, atualizou) => { if (S.escopo !== escopo) return; D = montar(p); render(); if (atualizou) { S.mudou = true; toast('Dados atualizados.'); } });
+  await abrirEscopo(escopo, (p, atualizou) => { if (S.escopo !== escopo) return; D = montar(p); render(); aquecer(); if (atualizou) { S.mudou = true; toast('Dados atualizados.'); } });
 }
 function trocarSetor(cod) {
   S.v.rca = 0; S.c.rca = 0; S.c.cid = ''; S.c.bai = ''; S.a.rca = 0; S.i.open = 0; S.d.open = 0; S.k.raw = '';
@@ -1341,6 +1384,7 @@ document.addEventListener('click', e => {
     case 'v-rca': S.v.rca = +v; S.pag.vendas = 'hoje'; if (!naRaiz()) render({ anim: 'pag-' }); return;
     case 'v-q': if (v) { S.v.q = v; const [d1, d2] = periodo(v); S.v.de = d1; S.v.ate = d2; } else S.v.q = ''; break;
     case 'v-graf': S.v.graf = v; break;
+    case 'v-qr': S.v.qr = v; break;
     case 'c-cid': S.c.cid = v; S.c.bai = ''; if (naRaiz()) return; break;
     case 'c-bai': S.c.bai = v; if (naRaiz()) return; break;
     case 'k-modo': S.k.modo = v; break;
@@ -1553,7 +1597,9 @@ window.SUP_APP = {
   pronto(c) {
     const trocou = !conta || conta.email !== c.email || conta.tipo !== c.tipo || conta.codusur !== c.codusur || conta.codsupervisor !== c.codsupervisor;
     conta = c;
-    $('#tela-carregando').hidden = true; $('#tela-login').hidden = true; $('#tela-app').hidden = false;
+    // a tela do app entra depois da abertura de 3 s com a logo; o pacote já começa a carregar por trás
+    const mostrar = () => { $('#tela-login').hidden = true; $('#tela-app').hidden = false; aoRolar(); };
+    if (window.SUP_ABERTURA) window.SUP_ABERTURA.sair(mostrar); else { $('#tela-carregando').hidden = true; mostrar(); }
     montarDock();
     if (trocou) { D = null; R = null; S.escopo = null; S.pilha = []; S.adm.dados = null; render({ topo: true }); carregarTudo(); }
     else render();

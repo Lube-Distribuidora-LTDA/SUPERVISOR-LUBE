@@ -17,6 +17,23 @@
 <link rel="apple-touch-icon" href="icones/apple-touch-icon.png">
 <link rel="stylesheet" href="fonts/fonts.css">
 <link rel="stylesheet" href="css/app.css">
+<script>
+/* abertura (1.4, Júlio: "um tempo de 3 s na tela inicial com a logo até entrar no app"): a tela da logo fica pelo
+   menos 3 s; os dados já carregam por trás. Depois ela some esmaecendo por cima da tela que entra. */
+window.SUP_ABERTURA = (function () {
+  var pronta = false, fila = [];
+  setTimeout(function () { pronta = true; fila.splice(0).forEach(function (f) { f(); }); }, 3000);
+  function sair(fn) {
+    if (!pronta) { fila.push(function () { sair(fn); }); return; }
+    var c = document.getElementById('tela-carregando');
+    fn();
+    if (!c || c.hidden) return;
+    c.classList.add('saindo');
+    setTimeout(function () { c.hidden = true; c.classList.remove('saindo'); }, 460);
+  }
+  return { sair: sair };
+})();
+</script>
 </head>
 <body>
 
@@ -98,7 +115,7 @@
         </div>
       </div>
     </header>
-    <main id="view" class="gut" aria-live="polite"></main>
+    <main id="view" class="gut"></main>
   </div>
 </div>
 <nav class="dock" id="dock" aria-label="Abas">

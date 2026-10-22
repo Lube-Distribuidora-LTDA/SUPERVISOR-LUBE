@@ -66,8 +66,12 @@
 
 * { box-sizing: border-box; }
 html, body { margin: 0; min-height: 100%; }
-body { background: var(--bg); background-image: var(--brilho-1), var(--brilho-2); background-attachment: fixed; color: var(--ink); font: 500 15px/1.45 var(--f-body); -webkit-font-smoothing: antialiased;
+/* o brilho do fundo fica numa camada fixa própria: "background-attachment: fixed" obrigava o celular a redesenhar a
+   tela inteira a cada passo da rolagem (1.4) */
+body { background: var(--bg); color: var(--ink); font: 500 15px/1.45 var(--f-body); -webkit-font-smoothing: antialiased;
   overscroll-behavior-y: none; overflow-x: hidden; -webkit-tap-highlight-color: transparent; transition: background-color .5s var(--ios); }
+body::before { content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none; background-image: var(--brilho-1), var(--brilho-2); transition: opacity .4s; }
+body.atras::before { opacity: 0; }
 button, input, select { font: inherit; color: inherit; }
 button { cursor: pointer; }
 :focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; border-radius: 6px; }
@@ -99,6 +103,8 @@ button { cursor: pointer; }
 .nav::before { content: ""; position: absolute; inset: 0; background: color-mix(in srgb, var(--band) 90%, transparent); -webkit-backdrop-filter: saturate(1.8) blur(20px); backdrop-filter: saturate(1.8) blur(20px); opacity: var(--p); pointer-events: none; }
 .nav::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 1px; background: var(--band-line); opacity: 0; transition: opacity .25s; pointer-events: none; }
 .nav.rolou::after { opacity: 1; }
+/* no Android o vidro desfocado custa caro a cada quadro da rolagem: lá a barra fica quase sólida (1.4) */
+.android .nav::before { -webkit-backdrop-filter: none; backdrop-filter: none; background: color-mix(in srgb, var(--band) 97%, transparent); }
 .nav-barra { position: relative; height: 50px; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 8px; }
 .nav-esq { display: flex; align-items: center; min-width: 0; }
 .nav-dir { justify-self: end; display: flex; align-items: center; gap: 8px; }
@@ -174,6 +180,8 @@ main { flex: 1; position: relative; padding-block: 2px calc(108px + env(safe-are
 .pilulas, .chips.rola { display: flex; flex-wrap: nowrap; gap: 8px; overflow-x: auto; scrollbar-width: none; flex: none;
   margin-inline: calc(-1 * max(16px, env(safe-area-inset-left, 0px))); padding: 1px max(16px, env(safe-area-inset-left, 0px)); }
 .chips.rola { gap: 6px; }
+.pilulas > .chips { flex: none; flex-wrap: nowrap; align-items: center; }
+.pilulas > .chips .chip { height: 34px; border-radius: 17px; padding: 0 14px; }
 .pilulas::-webkit-scrollbar, .chips.rola::-webkit-scrollbar { display: none; }
 .pil { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 0 0 12px; border-radius: 17px; background: var(--surface); border: 1px solid var(--line); max-width: 82vw; }
 .pil > span { font: 700 9.5px var(--f-body); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); flex: none; }
@@ -319,7 +327,12 @@ button.row:active { background: var(--press); transition: none; }
   box-shadow: 0 24px 48px -20px rgba(11, 19, 82, .8), 0 3px 10px rgba(0, 0, 0, .25), inset 0 1px 0 rgba(255, 255, 255, .18);
   transition: transform .5s var(--ios), opacity .4s var(--ios); }
 #tela-app[hidden] ~ .dock { display: none; }
-.dock-fundo { position: absolute; inset: 0; z-index: -1; pointer-events: none; }
+/* aurora parada, em degradê (1.4): as bolhas desfocadas se mexendo sem parar pesavam no celular a cada quadro */
+.dock-fundo { position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background: radial-gradient(150px 110px at 8% -10%, rgba(0, 160, 233, .55), transparent 70%),
+              radial-gradient(170px 120px at 52% 120%, rgba(75, 98, 255, .45), transparent 70%),
+              radial-gradient(160px 120px at 104% 125%, rgba(238, 27, 36, .45), transparent 70%); }
+.dock .au { display: none; }
 .dock-fundo::after { content: ""; position: absolute; inset: 0;
   background-image: linear-gradient(rgba(255, 255, 255, .055) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, .055) 1px, transparent 1px);
   background-size: 22px 22px; -webkit-mask-image: linear-gradient(180deg, #000, transparent 90%); mask-image: linear-gradient(180deg, #000, transparent 90%); }
@@ -354,12 +367,6 @@ main.em-anim { background: var(--app-solid); min-height: 100dvh; box-shadow: -14
 
 @media (prefers-reduced-motion: no-preference) {
   .bar > i { transition: width .3s ease; }
-  .dock .a1 { animation: au1 14s ease-in-out infinite alternate; }
-  .dock .a2 { animation: au2 18s ease-in-out infinite alternate; }
-  .dock .a3 { animation: au3 16s ease-in-out infinite alternate; }
-  @keyframes au1 { to { transform: translate(90px, 30px) scale(1.2); } }
-  @keyframes au2 { to { transform: translate(-80px, -20px) scale(.9); } }
-  @keyframes au3 { to { transform: translate(-70px, -30px) scale(1.15); } }
   /* ao entrar numa tela: cartões e linhas sobem em cascata; barras crescem; o anel se completa */
   .entrando .kpi, .entrando .card, .entrando .tile, .entrando .hoje-card, .entrando .mes-card, .entrando .acoes, .entrando .segios { animation: sobe .6s var(--ios) both; }
   .entrando .kpis > :nth-child(2), .entrando .mes-card { animation-delay: 45ms; }
@@ -406,7 +413,17 @@ main.em-anim { background: var(--app-solid); min-height: 100dvh; box-shadow: -14
 .link { border: 0; background: transparent; color: var(--accent); font: 600 13px var(--f-body); padding: 4px; text-decoration: underline; text-underline-offset: 3px; }
 
 .carregando { display: flex; flex-direction: column; align-items: center; gap: 16px; text-align: center; }
-.carregando .logo { height: 56px; }
+.carregando .logo { height: 72px; }
+/* abertura (1.4): por cima de tudo por pelo menos 3 s; a logo entra crescendo e "respira"; sai esmaecendo */
+#tela-carregando { position: fixed; inset: 0; z-index: 70; background: var(--bg); background-image: var(--brilho-1), var(--brilho-2); }
+#tela-carregando.saindo { animation: abertura-sai .46s cubic-bezier(.4, 0, .2, 1) forwards; pointer-events: none; }
+@keyframes abertura-sai { to { opacity: 0; transform: scale(1.06); } }
+@media (prefers-reduced-motion: no-preference) {
+  .carregando .logo { animation: logo-entra .9s var(--mola) both, respira 2.6s ease-in-out .9s infinite; }
+  .carregando .motivo, .carregando .pulso { animation: sobe .8s var(--ios) .35s both; }
+  @keyframes logo-entra { from { opacity: 0; transform: scale(.82); } }
+  @keyframes respira { 50% { transform: scale(1.035); } }
+}
 .carregando .pulso { width: 180px; height: 4px; border-radius: 4px; background: var(--surface-3); overflow: hidden; }
 .carregando .pulso i { display: block; width: 40%; height: 100%; background: var(--gold); border-radius: 4px; animation: vai 1.2s ease-in-out infinite alternate; }
 @keyframes vai { from { transform: translateX(-60%); } to { transform: translateX(210%); } }

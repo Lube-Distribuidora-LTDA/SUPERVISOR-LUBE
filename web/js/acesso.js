@@ -128,9 +128,9 @@
   }
   function mostrarLogin(m, mensagem) {
     conta = null;
-    $("#tela-carregando").hidden = true;
-    $("#tela-app").hidden = true;
-    $("#tela-login").hidden = false;
+    // abertura de 3 s com a logo (1.4); sem a abertura (versão antiga do index) troca na hora
+    var trocar = function () { $("#tela-app").hidden = true; $("#tela-login").hidden = false; };
+    if (window.SUP_ABERTURA) window.SUP_ABERTURA.sair(trocar); else { $("#tela-carregando").hidden = true; trocar(); }
     modo(m || "entrar");
     var em = ler(CHAVE_EMAIL);
     if (em && !$("#l-email").value) $("#l-email").value = em;
