@@ -90,5 +90,12 @@ O modo prévia só existe no servidor local: na Vercel a variável `SUP_MODO_PRE
 - **iPhone (sem custo):** abrir o endereço no Safari → Compartilhar → **Adicionar à Tela de Início**. Fica com o ícone da
   Lube, em tela cheia, e abre sem internet com a última cópia.
 - **Android:** o APK da casca (`app/`) abre o app publicado. Também dá para instalar pelo Chrome (menu → Instalar app).
+- **Gerar o APK de novo** (só precisa quando mudar ícone, nome ou a casca — o conteúdo vem do site publicado):
+  ferramentas em `%LOCALAPPDATA%\LubeAndroid` (Java 21 da Microsoft e Android SDK 36, instalados em 2026-10-22), chave em
+  `%LOCALAPPDATA%\LubeAndroid\assinatura\supervisor-lube.p12` com cópia em `P:\INTEGRAÇÃO BI\SUPERVISOR\4 - ASSINATURA ANDROID`
+  (o `app/android/assinatura.properties` aponta para ela e **não vai para o Git**). Suba o `versionCode` em
+  `app/android/app/build.gradle` e rode, com `JAVA_HOME` e `ANDROID_HOME` apontando para lá:
+  `cd app/android` e `gradlew assembleRelease`. O APK sai em `app/android/app/build/outputs/apk/release/`.
+  **Sem a chave, a versão nova não instala por cima da antiga.**
 - **Lojas (depois, se o Júlio quiser):** Google Play (US$ 25 uma vez) e Apple Developer (US$ 99 por ano). O projeto
   `app/ios` já está pronto para compilar num Mac ou na nuvem.
