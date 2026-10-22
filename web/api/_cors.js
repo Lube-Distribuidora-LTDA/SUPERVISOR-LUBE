@@ -18,9 +18,9 @@ function cors(req, res) {
   const origem = String((req.headers && req.headers.origin) || "");
   if (ORIGENS_DO_APP.has(origem)) {
     res.setHeader("Access-Control-Allow-Origin", origem);
-    res.setHeader("Access-Control-Allow-Headers", "Authorization, If-None-Match, Content-Type");
+    res.setHeader("Access-Control-Allow-Headers", "Authorization, If-None-Match, X-Versao, Content-Type");
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    res.setHeader("Access-Control-Expose-Headers", "ETag, X-Escopo");
+    res.setHeader("Access-Control-Expose-Headers", "ETag, X-Escopo, X-Versao-Pacote");
     res.setHeader("Access-Control-Max-Age", "600");
   }
   res.setHeader("Vary", "Origin, Authorization");

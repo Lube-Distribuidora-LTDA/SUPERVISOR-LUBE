@@ -9,14 +9,21 @@
  *   rca         o pacote do setor dele, FILTRADO aqui só com as linhas dele
  *
  * Responde gzip direto do banco (o pacote já vem comprimido) com ETag = versão:
- * o app guarda a última cópia no aparelho e pergunta com If-None-Match; sem
- * mudança, volta 304 sem payload.
+ * o app guarda a última cópia no aparelho e pergunta se mudou; sem mudança, não
+ * manda o pacote de novo.
+ *
+ * "Sem conexão" falso (Júlio, 2026-10-22): na resposta 304 a Vercel tira o cabeçalho
+ * Access-Control-Allow-Origin. No app do celular (outra origem) o 304 então vira erro de
+ * rede, e o app dizia "sem conexão" justamente quando o dado já estava em dia. Por isso:
+ *   - app 1.3 em diante manda "X-Versao" e, sem mudança, recebe 200 { igual: true };
+ *   - APK 1.1/1.2 (mandam If-None-Match) vindos do app recebem o pacote inteiro (200);
+ *   - o site (mesma origem, não precisa de CORS) continua com o 304.
  */
 "use strict";
 const zlib = require("zlib");
 const { consultar, json, semConfiguracao, erroBanco } = require("./_db.js");
 const { sessao } = require("./_sessao.js");
-const { cors } = require("./_cors.js");
+const { cors, ORIGENS_DO_APP } = require("./_cors.js");
 
 /* o RCA só leva as linhas dele (os índices seguem a ordem montada em supervisor.pacote_setor) */
 function filtrarRca(p, codusur, nome) {
@@ -74,7 +81,10 @@ module.exports = async (req, res) => {
       rca = { cod: rca, nome: r.rows[0].nome };
     }
 
-    const etagPedido = String(req.headers["if-none-match"] || "").replace(/^W\//, "").replace(/"/g, "");
+    const limpa = (v) => String(v || "").replace(/^W\//, "").replace(/"/g, "");
+    const versaoPedida = limpa(req.headers["x-versao"]);
+    const doApp = ORIGENS_DO_APP.has(String(req.headers.origin || ""));
+    const etagPedido = versaoPedida || (doApp ? "" : limpa(req.headers["if-none-match"]));
     const sufixo = rca ? "-R" + rca.cod : "";
     const q = await consultar(
       `SELECT versao, gerado_em, CASE WHEN versao || $2 = $3 THEN NULL ELSE payload_gz END AS payload_gz
@@ -84,10 +94,17 @@ module.exports = async (req, res) => {
     }
     const linha = q.rows[0];
     const etag = linha.versao + sufixo;
-    res.setHeader("ETag", '"' + etag + '"');
+    // a versão vai sempre num cabeçalho próprio (o app 1.3 lê dele). O ETag padrão fica de fora só para o APK
+    // 1.1/1.2 que pergunta com If-None-Match: com o ETag igual ao perguntado, a Vercel ainda poderia trocar o 200
+    // por um 304 sem CORS
+    res.setHeader("X-Versao-Pacote", etag);
+    if (!(doApp && !versaoPedida && req.headers["if-none-match"])) res.setHeader("ETag", '"' + etag + '"');
     res.setHeader("Cache-Control", "private, no-cache");
     res.setHeader("X-Escopo", escopo);
-    if (!linha.payload_gz) { res.statusCode = 304; return res.end(); }
+    if (!linha.payload_gz) {
+      if (versaoPedida) return json(res, 200, { igual: true, versao: etag }, { "X-Versao-Pacote": etag, "X-Escopo": escopo });
+      res.statusCode = 304; return res.end();
+    }
 
     let corpo = linha.payload_gz;
     if (rca) {

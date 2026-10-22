@@ -957,7 +957,7 @@ function whenHtml() {
   const ped = D.cargas.pedido, fat = D.cargas.faturado;
   const velho = ped && (Date.now() - new Date(ped).getTime() > 3 * 3600e3);
   const tit = 'Pedidos digitados até ' + diaHm(ped) + '; venda faturada até ' + diaHm(fat) + '; títulos ' + diaHm(D.cargas.titulo) + '. Toque para atualizar.';
-  return `<button type="button" class="when${offline ? ' off' : velho ? ' velho' : ''}" id="when" title="${esc(tit)}">${offline ? 'sem conexão · ' : ''}pedidos ${hm(ped)} · faturado ${hm(fat)}</button>`;
+  return `<button type="button" class="when${offline ? ' off' : velho ? ' velho' : ''}" id="when" title="${esc(tit)}">${offline ? (navigator.onLine ? 'sem resposta · ' : 'sem internet · ') : ''}pedidos ${hm(ped)} · faturado ${hm(fat)}</button>`;
 }
 /* título grande (rola junto com a tela; quando some, o título pequeno aparece na barra) */
 function grande(t) {
@@ -965,7 +965,7 @@ function grande(t) {
   return `<div class="grande"><h1${t.longo ? ' class="longo"' : ''}>${esc(t.titulo)}</h1>${t.sub ? `<div class="sub">${t.sub}</div>` : ''}${t.extra || ''}</div>`;
 }
 function faixas() {
-  return (offline ? '<div class="faixa">Sem conexão: mostrando a última cópia guardada no aparelho.</div>' : '') +
+  return (offline ? `<button type="button" class="faixa toque" data-a="m-atualizar">${navigator.onLine ? 'O servidor não respondeu agora' : 'Sem internet'}: mostrando a última cópia guardada no aparelho. Toque para tentar de novo.${ic('frente', 'seta')}</button>` : '') +
     (appNovo ? `<button type="button" class="faixa info toque" data-a="baixar-app">Nova versão do app (${esc(appNovo.versao)}) — toque para baixar e instalar.${ic('frente', 'seta')}</button>` : '');
 }
 const perfilRotulo = () => !conta ? '—' : conta.tipo === 'gerente' ? 'Gestor' : conta.tipo === 'supervisor' ? 'Supervisor' : 'RCA ' + (conta.codusur || '');
@@ -1245,14 +1245,18 @@ function chaveCache(escopo) { return (conta && conta.email || '') + '|' + escopo
 async function baixar(escopo, etag) {
   const t = await A.token();
   if (!t) { A.expirou(); throw new Error('sessão'); }
-  const h = { Authorization: 'Bearer ' + t }; if (etag) h['If-None-Match'] = '"' + etag + '"';
+  // 1.3: pergunta "mudou?" pelo X-Versao, e o "não mudou" volta como 200 { igual: true }. Com o If-None-Match de
+  // antes o servidor respondia 304, a Vercel tirava o CORS do 304 e o celular dizia "sem conexão" com o dado em dia.
+  const h = { Authorization: 'Bearer ' + t }; if (etag) h['X-Versao'] = etag;
   const r = await fetch((CFG.api || '') + '/api/dados' + (escopo && escopo[0] !== 'R' ? '?escopo=' + escopo : ''), { headers: h, cache: 'no-store' });
   if (r.status === 304) return null;
   if (r.status === 401) { A.expirou(); throw new Error('sessão'); }
-  const etagNova = (r.headers.get('ETag') || '').replace(/^W\//, '').replace(/"/g, '');
+  const etagNova = r.headers.get('X-Versao-Pacote') || (r.headers.get('ETag') || '').replace(/^W\//, '').replace(/"/g, '');
   if (r.status === 403) { const j = await r.json().catch(() => ({})); A.negado(j.mensagem || 'Seu acesso não está liberado.'); throw new Error('acesso'); }
   if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.mensagem || 'O servidor respondeu ' + r.status); }
-  return { pkg: await r.json(), etag: etagNova };
+  const j = await r.json();
+  if (j && j.igual === true) return null;
+  return { pkg: j, etag: etagNova };
 }
 /* abre o escopo: primeiro a cópia do aparelho, depois a versão nova por trás */
 async function abrirEscopo(escopo, aoMontar) {
@@ -1261,14 +1265,17 @@ async function abrirEscopo(escopo, aoMontar) {
   if (guardado && guardado.pkg) aoMontar(guardado.pkg, false);
   try {
     const novo = await baixar(escopo, guardado && guardado.etag);
-    offline = false;
+    const estava = offline; offline = false;
     if (novo) { await IDB.set(k, novo); aoMontar(novo.pkg, !!guardado); }
+    else if (estava) render();   // voltou a falar com o servidor: tira o aviso na hora
     return true;
   } catch (e) {
     if (e.message === 'sessão' || e.message === 'acesso') return false;
-    offline = !navigator.onLine || /fetch|network|Failed/i.test(e.message);
+    offline = !navigator.onLine || /fetch|network|Failed|Load failed/i.test(e.message);
     if (!guardado) throw e;
-    toast(offline ? 'Sem conexão: mostrando a última cópia.' : e.message, true);
+    // com internet e sem resposta é o servidor que não respondeu (não é "sem conexão"); tenta de novo em 30 s
+    if (offline && navigator.onLine) { clearTimeout(abrirEscopo._de_novo); abrirEscopo._de_novo = setTimeout(() => { if (conta && offline) carregarTudo(); }, 30e3); }
+    toast(offline ? (navigator.onLine ? 'Não consegui falar com o servidor agora: mostrando a última cópia.' : 'Sem internet: mostrando a última cópia.') : e.message, true);
     render();
     return false;
   }
