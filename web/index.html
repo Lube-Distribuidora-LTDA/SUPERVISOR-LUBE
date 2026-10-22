@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
 <title>Supervisor Lube</title>
 <meta name="description" content="App do supervisor, do RCA e do gerente da Lube Distribuidora: venda do dia, carteira, cliente, curva ABC, inadimplência e devolução.">
 <meta name="theme-color" content="#08122b">
@@ -35,7 +35,7 @@
     <div class="marca">
       <span class="placa"><img src="logo-lube.png" alt="Lube Distribuidora" width="138" height="46"></span>
       <h1>Supervisor Lube</h1>
-      <p>Venda, carteira e clientes do seu setor, na palma da mão.</p>
+      <p>Venda, carteira e clientes da sua região, na palma da mão.</p>
     </div>
     <div class="card">
       <div class="modos" id="gate-modos" role="group" aria-label="Entrar ou primeiro acesso">
@@ -54,18 +54,21 @@
         <div class="fld"><label for="c-nome">Seu nome</label><input id="c-nome" type="text" autocomplete="name" required></div>
         <div class="fld"><label for="c-email">E-mail</label><input id="c-email" type="email" inputmode="email" autocomplete="email" autocapitalize="none" spellcheck="false" required></div>
         <div class="fld"><label for="c-senha">Crie uma senha (mínimo 8)</label><input id="c-senha" type="password" autocomplete="new-password" minlength="8" required></div>
-        <div class="fld"><label for="c-tipo">Você é</label>
-          <select id="c-tipo"><option value="rca">RCA (vendedor)</option><option value="supervisor">Supervisor</option></select></div>
-        <div class="fld" id="c-cod-box"><label for="c-cod">Seu código de RCA no WinThor</label><input id="c-cod" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off"></div>
-        <button class="btn cheio" type="submit" id="btn-cadastrar">Pedir acesso</button>
-        <p class="sub" style="margin:0;text-align:center">O TI confere e libera. Depois é só entrar.</p>
+        <!-- 1.2: o app é dos supervisores (os RCAs ficam para depois; o perfil continua no código) -->
+        <div class="fld" hidden><label for="c-tipo">Você é</label>
+          <select id="c-tipo"><option value="supervisor">Supervisor</option></select></div>
+        <div class="fld" id="c-cod-box" hidden><label for="c-cod">Seu código de RCA no WinThor</label><input id="c-cod" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off"></div>
+        <div class="fld"><label for="c-convite">Código do convite</label><input id="c-convite" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code" placeholder="6 números"><small>Veio na mensagem do TI. Com ele você já entra liberado.</small></div>
+        <button class="btn cheio" type="submit" id="btn-cadastrar">Criar minha conta</button>
+        <p class="sub" style="margin:0;text-align:center">Para supervisores da Lube. Sem o código, o TI confere e libera.</p>
       </form>
 
       <form id="form-pedir" data-form="pedir" novalidate hidden>
         <p class="sub" style="margin:0" id="pedir-texto">Sua conta já existe, mas ainda não tem acesso ao app. Peça abaixo — o TI libera.</p>
-        <div class="fld"><label for="p-tipo">Você é</label>
-          <select id="p-tipo"><option value="rca">RCA (vendedor)</option><option value="supervisor">Supervisor</option></select></div>
-        <div class="fld" id="p-cod-box"><label for="p-cod">Seu código de RCA no WinThor</label><input id="p-cod" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off"></div>
+        <div class="fld" hidden><label for="p-tipo">Você é</label>
+          <select id="p-tipo"><option value="supervisor">Supervisor</option></select></div>
+        <div class="fld" id="p-cod-box" hidden><label for="p-cod">Seu código de RCA no WinThor</label><input id="p-cod" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off"></div>
+        <div class="fld"><label for="p-convite">Código do convite</label><input id="p-convite" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code" placeholder="6 números"><small>Se o TI mandou o convite, você entra na hora.</small></div>
         <button class="btn cheio" type="submit" id="btn-pedir">Pedir acesso</button>
         <button class="link" type="button" data-acao="sair">Entrar com outra conta</button>
       </form>
@@ -82,27 +85,31 @@
   </div>
 </div>
 
-<!-- app -->
+<!-- app: barra de cima no jeito do iPhone, telas e a barra de baixo no desenho do Painel Lube (1.2) -->
 <div id="tela-app" class="shell" hidden>
   <div class="app">
-    <header class="top gut">
-      <div class="brand">
-        <span class="placa"><img src="logo-lube.png" alt="Lube" width="90" height="30"></span>
-        <span class="nome">Supervisor Lube<small id="perfil-rotulo">—</small></span>
-        <button type="button" class="conta-btn" id="conta-btn" aria-label="Sua conta">··</button>
-      </div>
-      <div class="setor-row">
-        <div id="setor-box" style="min-width:0"></div>
-        <button type="button" class="when" id="when" aria-label="Horário dos dados"></button>
+    <header class="nav" id="nav">
+      <div class="nav-barra gut">
+        <div class="nav-esq" id="nav-esq"></div>
+        <div class="nav-titulo" id="nav-titulo" aria-hidden="true"></div>
+        <div class="nav-dir">
+          <button type="button" class="ic-btn" id="btn-busca" aria-label="Buscar cliente"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m20 20-4.6-4.6"/></svg></button>
+          <button type="button" class="conta-btn" id="conta-btn" aria-label="Sua conta">··</button>
+        </div>
       </div>
     </header>
     <main id="view" class="gut" aria-live="polite"></main>
-    <nav class="tabs gut" id="tabs" aria-label="Abas"></nav>
   </div>
 </div>
+<nav class="dock" id="dock" aria-label="Abas">
+  <div class="dock-fundo" aria-hidden="true"><i class="au a1"></i><i class="au a2"></i><i class="au a3"></i></div>
+  <div class="dock-itens" id="dock-itens"></div>
+</nav>
+<div id="sombra" class="sombra" aria-hidden="true"></div>
+<div id="puxar" class="puxar" aria-hidden="true"></div>
 
 <div id="veu" class="veu" hidden></div>
-<div id="folha" class="folha" role="dialog" aria-label="Sua conta" hidden></div>
+<div id="folha" class="folha" role="dialog" aria-modal="true" aria-label="Janela" hidden></div>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
 <script src="js/config.js"></script>

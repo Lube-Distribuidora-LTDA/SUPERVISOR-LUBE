@@ -191,19 +191,27 @@
   function cadastrar(ev) {
     ev.preventDefault();
     var nome = $("#c-nome").value.trim(), email = $("#c-email").value.trim().toLowerCase(), senha = $("#c-senha").value;
-    var tipo = $("#c-tipo").value, cod = $("#c-cod").value.replace(/\D/g, "");
+    var tipo = $("#c-tipo").value, cod = $("#c-cod").value.replace(/\D/g, ""), convite = $("#c-convite").value.replace(/\D/g, "");
     erro("");
+    if (convite && convite.length !== 6) { erro("O código do convite tem 6 números."); $("#c-convite").focus(); return; }
     if (nome.length < 3) { erro("Informe o seu nome."); $("#c-nome").focus(); return; }
     if (!RE_EMAIL.test(email)) { erro("Informe um e-mail válido."); $("#c-email").focus(); return; }
     if (senha.length < 8) { erro("A senha precisa ter pelo menos 8 caracteres."); $("#c-senha").focus(); return; }
     if (tipo === "rca" && !cod) { erro("Informe o seu código de RCA (o mesmo do WinThor)."); $("#c-cod").focus(); return; }
     var b = $("#btn-cadastrar");
     ocupado(b, true, "Enviando…");
-    auth("signup", { email: email, password: senha, data: { sistema: "supervisor", tipo: tipo, codigo: tipo === "rca" ? cod : "", nome: nome } })
+    auth("signup", { email: email, password: senha, data: { sistema: "supervisor", tipo: tipo, codigo: tipo === "rca" ? cod : "", nome: nome, convite: convite } })
       .then(function (j) {
         gravar(CHAVE_EMAIL, email);
-        gravar(CHAVE_SESSAO, null);
-        mostrarOk("<b>Pedido enviado.</b><br>O TI confere os seus dados e libera o acesso. Depois é só entrar com o e-mail <b>" + texto(email) + "</b> e a senha que você criou.");
+        var pendente = function () {
+          gravar(CHAVE_SESSAO, null);
+          mostrarOk((convite ? "<b>Conta criada, mas o código do convite não conferiu</b> (ou já foi usado).<br>" : "<b>Pedido enviado.</b><br>") +
+            "O TI confere os seus dados e libera o acesso. Depois é só entrar com o e-mail <b>" + texto(email) + "</b> e a senha que você criou.");
+        };
+        // com convite (1.2), a conta já nasce liberada: entra direto, sem passar pela tela de entrada
+        if (!convite || !j || !j.access_token) { pendente(); return; }
+        guardarSessao(j);
+        return rpc("sup_meu_acesso").then(function (c) { if (c && c.situacao === "liberado") decidir(c, true); else pendente(); }).catch(pendente);
       })
       .catch(function (e) {
         if (e && e.message === "JA_EXISTE") {
@@ -218,11 +226,12 @@
 
   function pedir(ev) {
     ev.preventDefault();
-    var tipo = $("#p-tipo").value, cod = $("#p-cod").value.replace(/\D/g, "");
+    var tipo = $("#p-tipo").value, cod = $("#p-cod").value.replace(/\D/g, ""), convite = $("#p-convite").value.replace(/\D/g, "");
     if (tipo === "rca" && !cod) { erro("Informe o seu código de RCA (o mesmo do WinThor)."); $("#p-cod").focus(); return; }
+    if (convite && convite.length !== 6) { erro("O código do convite tem 6 números."); $("#p-convite").focus(); return; }
     var b = $("#btn-pedir");
     ocupado(b, true, "Enviando…");
-    rpc("sup_pedir_acesso", { p_tipo: tipo, p_codigo: tipo === "rca" ? Number(cod) : null, p_nome: "" })
+    rpc("sup_pedir_acesso", { p_tipo: tipo, p_codigo: tipo === "rca" ? Number(cod) : null, p_nome: "", p_convite: convite || null })
       .then(function (c) { return decidir(c, true); })
       .catch(function (e) { erro(texto(e && e.message ? e.message : "Não consegui enviar agora.")); })
       .then(function () { ocupado(b, false, "Pedir acesso"); });
