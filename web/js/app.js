@@ -978,6 +978,9 @@ function barra(t) {
   $('#nav-titulo').textContent = t.titulo || '';
   $('#btn-busca').hidden = t.chave === 'busca' || !D;
   $('#conta-btn').textContent = iniciais(conta && (conta.nome || conta.email));
+  // ponto vermelho na conta enquanto houver versão nova do app para instalar
+  $('#conta-btn').classList.toggle('novo', !!appNovo);
+  $('#conta-btn').setAttribute('aria-label', appNovo ? 'Sua conta (versão nova do app para instalar)' : 'Sua conta');
 }
 function montarDock() {
   const d = $('#dock-itens');
@@ -1174,6 +1177,7 @@ function abrirMenu() {
   abrirFolha(`
     <div class="alca" aria-hidden="true"></div>
     <div class="quem"><span class="conta-btn">${esc(iniciais(conta.nome || conta.email))}</span><div><b>${esc(conta.nome || conta.email)}</b><span>${esc(conta.email || '')} · ${esc(perfilRotulo())}</span></div></div>
+    ${appNovo ? `<button type="button" class="item novo" data-a="baixar-app"><svg viewBox="0 0 24 24">${ICM.instalar}</svg>Atualizar o app<small><span class="pill bad">versão ${esc(appNovo.versao)}</span></small></button>` : ''}
     <button type="button" class="item" data-a="m-atualizar"><svg viewBox="0 0 24 24">${ICM.atual}</svg>Atualizar dados<small>${D ? 'gerado ' + diaHm(D.gerado) : ''}</small></button>
     ${conta.admin ? `<button type="button" class="item" data-a="m-acessos"><svg viewBox="0 0 24 24">${ICM.acessos}</svg>Gestores e supervisores<small>${pend ? pend + ' pendente' + (pend === 1 ? '' : 's') : ''}</small></button>` : ''}
     ${instalar ? `<button type="button" class="item" data-a="m-instalar"><svg viewBox="0 0 24 24">${ICM.instalar}</svg>Instalar na tela inicial</button>` : ''}
@@ -1193,6 +1197,43 @@ function abrirSetores() {
       <button type="button" class="row${D && s.cod === D.setor.cod ? ' sel' : ''}" data-a="setor" data-v="${s.cod}">
         <span class="t">${esc(s.nome)}</span><span class="r">${D && s.cod === D.setor.cod ? ic('check', 'ok-ic') : brlK(s.venda[i0])}</span>
       </button>`).join('')}</div>`, 'Escolha o setor');
+}
+/* versão nova do app: ALERTA por cima de tudo (1.3; antes era só uma faixa no começo da tela, que sumia atrás do
+   cabeçalho ao rolar — Júlio, 2026-10-22). Aparece uma vez por abertura do app; "Depois" fecha, e o ponto vermelho na
+   conta e o item do menu continuam lá. Com "obrigatoria": true no versao-app.json não tem "Depois". */
+function novaVersao(v) {
+  const repetido = appNovo && appNovo.versionCode === v.versionCode;
+  appNovo = v;
+  if (conta) render();
+  if (!repetido || !S.avisado) mostrarAlertaVersao();
+}
+function mostrarAlertaVersao() {
+  if (!appNovo || $('#alerta-versao')) return;
+  S.avisado = true;
+  const obrig = !!appNovo.obrigatoria;
+  const a = document.createElement('div');
+  a.id = 'alerta-versao'; a.className = 'alerta-fundo';
+  a.innerHTML = `
+    <div class="alerta-ios" role="alertdialog" aria-modal="true" aria-labelledby="al-t" aria-describedby="al-m">
+      <div class="alerta-corpo">
+        <img src="icones/icone-192.png" alt="" width="56" height="56">
+        <b id="al-t">Nova versão do app</b>
+        <p id="al-m">O Supervisor Lube <b>${esc(appNovo.versao)}</b> está pronto. Toque em <b>Atualizar</b> e instale por cima: o seu acesso continua.</p>
+        ${appNovo.notas ? `<p class="notas">${esc(appNovo.notas)}</p>` : ''}
+      </div>
+      <div class="alerta-botoes${obrig ? ' um' : ''}">${obrig ? '' : '<button type="button" data-a="alerta-depois">Depois</button>'}<button type="button" class="forte" data-a="baixar-app">Atualizar</button></div>
+    </div>`;
+  document.body.appendChild(a);
+  if (!REDUZ) {
+    a.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 260, easing: 'ease-out' });
+    a.firstElementChild.animate([{ opacity: 0, transform: 'scale(1.18)' }, { opacity: 1, transform: 'scale(1)' }], { duration: 380, easing: 'cubic-bezier(.2,.9,.3,1.15)' });
+  }
+  a.querySelector('.forte').focus({ preventScroll: true });
+}
+function fecharAlertaVersao() {
+  const a = $('#alerta-versao'); if (!a) return;
+  if (REDUZ) { a.remove(); return; }
+  a.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 200, fill: 'forwards' }).onfinish = () => a.remove();
 }
 function copiar() {
   const p = navigator.clipboard && navigator.clipboard.writeText ? navigator.clipboard.writeText(S.convite) : Promise.reject(new Error('sem'));
@@ -1307,7 +1348,8 @@ document.addEventListener('click', e => {
     case 'm-acessos': fecharFolha(); S.adm.erro = ''; empurrar({ t: 'adm', titulo: 'Acessos' }); if (!S.adm.dados) carregarAcessos(); return;
     case 'm-instalar': fecharFolha(); if (instalar) { instalar.prompt(); instalar = null; } return;
     case 'm-sair': fecharFolha(); IDB.limpar(); D = null; R = null; conta = null; S.escopo = null; S.pilha = []; S.adm.dados = null; A.sair(); return;
-    case 'baixar-app': if (appNovo) location.href = CFG.site + appNovo.apk; return;
+    case 'baixar-app': fecharAlertaVersao(); fecharFolha(); if (appNovo) location.href = CFG.site + appNovo.apk; return;
+    case 'alerta-depois': fecharAlertaVersao(); toast('Quando quiser, atualize pelo menu da sua conta.'); return;
     default: return;
   }
   render();
@@ -1519,6 +1561,7 @@ if (CFG.nativo) try {
   // botão "voltar" do Android: fecha a folha, volta a tela de cima, volta ao Resumo; só minimiza no Resumo
   if (P.App && P.App.addListener) {
     P.App.addListener('backButton', () => {
+      if ($('#alerta-versao')) { if (!(appNovo && appNovo.obrigatoria)) fecharAlertaVersao(); return; }
       if (!$('#folha').hidden) { fecharFolha(); return; }
       if (!$('#tela-app').hidden) {
         if (S.pilha.length) { voltar(); return; }
@@ -1527,14 +1570,25 @@ if (CFG.nativo) try {
       if (P.App.minimizeApp) P.App.minimizeApp(); else if (P.App.exitApp) P.App.exitApp();
     });
   }
-  // versão nova do APK: o site publica versao-app.json; quem tem um número de build menor vê o aviso.
+  // versão nova do APK: o site publica versao-app.json; quem tem um número de build menor recebe o ALERTA.
   // O APK 1.0 (que só abria o site) não tem o plugin App: conta como build 1.
+  // Confere ao abrir e de novo quando o app volta para a frente (30 min depois da última conferência).
   const minhaBuild = P.App && P.App.getInfo ? P.App.getInfo().then(i => Number(i && i.build) || 1).catch(() => 1) : Promise.resolve(1);
-  minhaBuild.then(build => fetch(CFG.site + '/versao-app.json', { cache: 'no-store' })
-    .then(r => r.ok ? r.json() : null)
-    .then(v => { if (v && Number(v.versionCode) > build && v.apk) { appNovo = v; if (conta) render(); } }))
-    .catch(() => { /* sem rede: confere na próxima abertura */ });
+  let conferidaEm = 0;
+  const conferirVersao = () => {
+    conferidaEm = Date.now();
+    minhaBuild.then(build => fetch(CFG.site + '/versao-app.json', { cache: 'no-store' })
+      .then(r => r.ok ? r.json() : null)
+      .then(v => { if (v && Number(v.versionCode) > build && v.apk) novaVersao(v); }))
+      .catch(() => { /* sem rede: confere na próxima abertura */ });
+  };
+  conferirVersao();
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && Date.now() - conferidaEm > 30 * 60e3) conferirVersao(); });
 } catch (e) { /* recurso nativo indisponível nesta versão: o app segue normal */ }
+// prévia nesta máquina: localhost:3104/?previa=gerente&aviso=1 simula uma versão nova (para ver o alerta)
+if (!CFG.nativo && location.protocol === 'http:' && /^(localhost|127\.0\.0\.1)$/.test(location.hostname) && new URLSearchParams(location.search).has('aviso')) {
+  setTimeout(() => novaVersao({ versionCode: 99, versao: '1.3', apk: '/baixar/supervisor-lube.apk', notas: 'Exemplo de novidade: o aviso de versão nova agora aparece como alerta.' }), 1500);
+}
 // carretel do "puxar para atualizar" (12 raios, como o do iPhone)
 $('#puxar').innerHTML = '<svg viewBox="0 0 30 30" aria-hidden="true"><g stroke="currentColor" stroke-width="2.6" stroke-linecap="round">' +
   Array.from({ length: 12 }, (_, i) => `<line x1="15" y1="3.5" x2="15" y2="8.2" opacity="${(1 - i / 12 * .85).toFixed(2)}" transform="rotate(${-i * 30} 15 15)"/>`).join('') + '</g></svg>';
