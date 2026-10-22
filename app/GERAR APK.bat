@@ -33,6 +33,14 @@ echo.
 echo   SUPERVISOR LUBE - gerar APK
 echo   ============================================
 echo.
+rem --- uma compilacao de cada vez: duas ao mesmo tempo se atropelam na mesma pasta (2026-10-22) ---
+set "TRAVA=%L%\gerar-apk.trava"
+if not exist "%TRAVA%" goto livre
+powershell -NoProfile -Command "if (((Get-Date) - (Get-Item $env:TRAVA).LastWriteTime).TotalMinutes -lt 30) { exit 1 } else { exit 0 }"
+if errorlevel 1 goto ja_rodando
+:livre
+> "%TRAVA%" echo %DATE% %TIME%
+set "TRAVA_MINHA=1"
 > "%LOG%" echo ===== GERAR APK %DATE% %TIME% em %COMPUTERNAME% por %USERNAME%
 >> "%LOG%" echo pasta: %CD%
 >> "%LOG%" echo JAVA_HOME: %JAVA_HOME%
@@ -53,7 +61,11 @@ if errorlevel 1 goto falhou_web
 echo   [3/3] Compilando (a primeira vez leva alguns minutos)...
 echo.
 cd /d "%APP%android"
-powershell -NoProfile -ExecutionPolicy Bypass -Command "& .\gradlew.bat assembleRelease --no-daemon 2>&1 | Tee-Object -FilePath $env:LOG -Append; exit $LASTEXITCODE"
+rem o APK antigo sai antes: "PRONTO" so aparece se o novo foi gerado agora
+if exist "app\build\outputs\apk\release\app-release.apk" del /q "app\build\outputs\apk\release\app-release.apk"
+rem "clean" comeca do zero (sobra de compilacao interrompida da "Cannot find built manifest");
+rem o cmd junta os avisos do Gradle na saida normal (o PowerShell pintava de vermelho como erro)
+powershell -NoProfile -ExecutionPolicy Bypass -Command "& cmd /c 'gradlew.bat clean assembleRelease --no-daemon 2>&1' | Tee-Object -FilePath $env:LOG -Append; exit $LASTEXITCODE"
 if errorlevel 1 goto falhou
 if not exist "app\build\outputs\apk\release\app-release.apk" goto sem_apk
 
@@ -67,6 +79,11 @@ echo   PRONTO. APK em: %USERPROFILE%\Downloads\Supervisor Lube.apk
 echo   Avise o Claude para publicar o link de download.
 goto sair
 
+:ja_rodando
+echo   JA EXISTE UMA COMPILACAO RODANDO (aberta ha menos de 30 minutos).
+echo   Espere a outra janela terminar. Se nenhuma outra janela estiver aberta,
+echo   apague o arquivo %TRAVA% e rode de novo.
+goto sair_sem_trava
 :sem_node
 echo   Nao achei o Node (node.exe). Instale o Node.js e rode de novo.
 >> "%LOG%" echo ERRO: sem node
@@ -99,6 +116,8 @@ echo   O BUILD FALHOU. O registro completo esta em %LOG% (o Claude le de la).
 goto sair
 
 :sair
+if defined TRAVA_MINHA del /q "%TRAVA%" >nul 2>nul
+:sair_sem_trava
 echo.
 pause
 endlocal
