@@ -1,6 +1,9 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "regions": ["gru1"],
+  "redirects": [
+    { "source": "/supervisor-lube.apk", "destination": "/baixar/supervisor-lube.apk", "permanent": false }
+  ],
   "functions": {
     "api/dados.js": { "maxDuration": 30 },
     "api/acessos.js": { "maxDuration": 30 }

@@ -9,9 +9,10 @@
 <meta property="og:title" content="Supervisor Lube — app da Lube Distribuidora">
 <meta property="og:description" content="Venda do dia, carteira, clientes, curva ABC, inadimplência e devolução no celular.">
 <meta property="og:image" content="https://supervisor-lube.vercel.app/icones/icone-512.png">
-<link rel="icon" type="image/png" href="../icones/icone-192.png">
-<link rel="stylesheet" href="../fonts/fonts.css">
-<link rel="stylesheet" href="../css/app.css">
+<!-- caminhos completos (/...): o link chega como /baixar ou /baixar/ e os dois tem de funcionar (2026-10-22) -->
+<link rel="icon" type="image/png" href="/icones/icone-192.png">
+<link rel="stylesheet" href="/fonts/fonts.css">
+<link rel="stylesheet" href="/css/app.css">
 <style>
   .baixar { width: 100%; max-width: 420px; display: flex; flex-direction: column; gap: 16px; }
   .baixar .marca { display: flex; flex-direction: column; align-items: center; gap: 14px; text-align: center; }
@@ -29,14 +30,14 @@
 <div class="tela">
   <div class="baixar">
     <div class="marca">
-      <img class="icone" src="../icones/icone-192.png" alt="Ícone do Supervisor Lube" width="96" height="96">
+      <img class="icone" src="/icones/icone-192.png" alt="Ícone do Supervisor Lube" width="96" height="96">
       <h1>Supervisor Lube</h1>
       <p>Venda do dia, carteira, clientes, curva ABC, inadimplência e devolução — no seu celular.</p>
     </div>
 
     <div class="card">
       <h2>Android</h2>
-      <a class="btn cheio" id="btn-apk" href="supervisor-lube.apk" download="Supervisor Lube.apk">Baixar o app</a>
+      <a class="btn cheio" id="btn-apk" href="/baixar/supervisor-lube.apk" download="Supervisor Lube.apk">Baixar o app</a>
       <ol>
         <li>Toque em <b>Baixar o app</b> e depois abra o arquivo baixado.</li>
         <li>Se o celular pedir, permita <b>instalar apps desta fonte</b>.</li>
@@ -59,7 +60,7 @@
   </div>
 </div>
 <script>
-  fetch('../versao-app.json', { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; }).then(function (v) {
+  fetch('/versao-app.json', { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; }).then(function (v) {
     if (v && v.versao) document.getElementById('versao').textContent = 'Versão ' + v.versao + (v.publicado ? ' · ' + v.publicado.split('-').reverse().join('/') : '');
   }).catch(function () {});
 </script>
