@@ -974,7 +974,7 @@ function barra(t) {
   const ant = n ? (n > 1 ? S.pilha[n - 2].titulo : (TABS.find(x => x[0] === S.tab) || TABS[0])[1]) : null;
   $('#nav-esq').innerHTML = ant != null
     ? `<button type="button" class="voltar" data-a="voltar" aria-label="Voltar para ${esc(ant)}">${ic('back')}<span>${esc(curto(ant, 16))}</span></button>`
-    : '<img class="logo mini" src="logo-lube-mini.png" alt="Lube Distribuidora" width="89" height="30">';
+    : '<img class="logo topo" src="logo-lube-mini.png" alt="Lube Distribuidora" width="89" height="30">';
   $('#nav-titulo').textContent = t.titulo || '';
   $('#btn-busca').hidden = t.chave === 'busca' || !D;
   $('#conta-btn').textContent = iniciais(conta && (conta.nome || conta.email));
@@ -1046,6 +1046,8 @@ function contar(raiz) {
     if (!alvo) return;
     const passo = t => { const k = Math.min(1, (t - t0) / T), e = 1 - Math.pow(1 - k, 4); el.textContent = f(alvo * e); if (k < 1) requestAnimationFrame(passo); };
     el.textContent = f(0); requestAnimationFrame(passo);
+    // garantia: com o app em segundo plano o navegador pausa a animação; o número final aparece de qualquer jeito
+    setTimeout(() => { el.textContent = f(alvo); }, T + 250);
   });
 }
 

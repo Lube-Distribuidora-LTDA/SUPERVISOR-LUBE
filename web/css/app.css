@@ -87,8 +87,11 @@ button { cursor: pointer; }
 /* logo da Lube transparente, com contorno branco (1.3, pedido do Júlio): sem a placa branca de antes.
    Duas artes: logo-lube-mini.png (topo, contorno mais grosso para aparecer pequena) e logo-lube.png (entrada).
    Refazer pelo ferramentas\logo_contorno.py. */
-.logo { display: block; height: 56px; width: auto; flex: none; filter: drop-shadow(0 8px 18px rgba(0, 0, 0, .45)); }
-.logo.mini { height: 30px; filter: drop-shadow(0 3px 8px rgba(0, 0, 0, .4)); }
+/* altura fixa e largura pela proporção da arte; object-fit garante que nunca estica, nem se o espaço apertar */
+.logo { display: block; height: 56px; width: auto; max-width: 100%; object-fit: contain; flex: none; filter: drop-shadow(0 8px 18px rgba(0, 0, 0, .45)); }
+/* "topo", não "mini": .mini é o gráfico do Resumo (largura 100%) e esticava a logo (Júlio: "tá tão esticada que chega
+   tá borrada", 2026-10-22) */
+.logo.topo { height: 30px; filter: drop-shadow(0 3px 8px rgba(0, 0, 0, .4)); }
 
 /* Barra de cima (iPhone): logo ou "‹ voltar", título pequeno que aparece ao rolar, busca e conta.
    O fundo de vidro acende conforme o título grande sai (--p de 0 a 1, posto pelo app.js). */
@@ -274,7 +277,7 @@ button.row:active { background: var(--press); transition: none; }
 .tile::after { content: ""; position: absolute; right: -36px; top: -36px; width: 110px; height: 110px; border-radius: 50%; background: radial-gradient(closest-side, var(--cor-brilho, rgba(95, 126, 245, .2)), transparent); pointer-events: none; }
 .tile .cartao-rot { font-size: 10px; }
 .tile .cartao-rot .ic { color: var(--cor-ic, var(--accent)); }
-.tile .v { font: 800 22px/1.1 var(--f-num); letter-spacing: -.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: auto; }
+.tile .v { font: 800 clamp(17px, 5.6vw, 22px)/1.1 var(--f-num); letter-spacing: -.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: auto; }
 .tile .v.txt { font: 800 15px/1.2 var(--f-display); letter-spacing: 0; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .tile .d { font: 500 11.5px/1.35 var(--f-body); color: var(--muted); }
 .tile.perigo { --cor-brilho: rgba(255, 107, 116, .22); --cor-ic: var(--bad); }
