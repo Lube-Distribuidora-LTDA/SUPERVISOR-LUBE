@@ -1,8 +1,8 @@
 {
-  "versionCode": 5,
-  "versao": "1.4",
+  "versionCode": 6,
+  "versao": "1.5",
   "apk": "/baixar/supervisor-lube.apk",
-  "publicado": "2026-10-22",
-  "notas": "Novidades: troca de abas mais suave, filtro Mês, Semana e Dia nos RCAs e abertura com a logo.",
+  "publicado": "2026-10-23",
+  "notas": "Novidades: meta do mês no Resumo, com quanto já faturou, quanto falta por dia e se está no ritmo; e a % da meta de cada região.",
   "nota": "O app nativo compara o versionCode dele com este: menor = mostra o aviso para baixar a versao nova. Suba junto com o APK novo em baixar/. Desde a 1.3: 'notas' (texto curto) aparece no alerta; 'obrigatoria': true tira o botao Depois."
 }
