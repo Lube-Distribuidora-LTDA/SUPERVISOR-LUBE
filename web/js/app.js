@@ -118,6 +118,8 @@ function montar(p) {
     item: (p.item || []).map(r => ({ mes: r[0], cli: r[1], p: r[2], rca: r[3], q: +r[4] || 0, v: +r[5] || 0, c: +r[6] || 0, ult: r[7], n: r[8] || 0 })),
     dev: (p.dev || []).map(r => ({ d: r[0], cli: r[1], rca: r[2], nota: r[3], mot: r[4], v: +r[5] || 0 })),
     prod: p.prod || {}, forn: p.forn || {}, mot: p.mot || {}, cob: p.cob || {},
+    // meta da região por dia útil (1.5); null = pacote de antes da meta (a cópia guardada no aparelho)
+    meta: p.meta ? p.meta.map(r => ({ d: r[0], v: +r[1] || 0 })) : null,
     cli: (p.cli || []).map(r => ({ cod: r[0], fantasia: titulo(r[1] || r[2]) || ('Cliente ' + r[0]), razao: r[2] || '', cnpj: r[3], ramo: r[4], cidade: r[5] || '', bairro: r[6] || '', end: r[7] || '', fone: r[8], cel: r[9], rca: r[10], plano: r[11], prazo: r[12], limite: +r[13] || 0, bloq: !!r[14], ult: r[15], cad: r[16], sup: r[17] })),
   };
   d.RMAP = new Map(d.rcas.map(r => [r.cod, r]));
@@ -253,6 +255,43 @@ function miniBarras(d1, d2) {
     ? `<rect x="${(i * bw + bw * .18).toFixed(1)}" y="${(H - v / max * H).toFixed(1)}" width="${Math.max(1, bw * .64).toFixed(1)}" height="${(v / max * H).toFixed(1)}" rx="1.4"${i === dias.length - 1 ? ' class="hl"' : ''} style="--i:${i}"/>` : '').join('') + '</svg>';
 }
 
+/* meta do mês (1.5, Júlio: "se a gente já conseguiu bater a meta ou se já está próximo de bater"). A meta é a da
+   região no WinThor (PCMETASUP), uma por dia útil. O ritmo compara o faturado com a meta dos dias úteis que já
+   terminaram: o dia de hoje ainda está faturando. */
+function situacaoMeta(fat, total, ate) {
+  if (fat >= total) return ['good', 'Meta batida'];
+  if (fat >= total * .9) return ['A', 'Quase lá'];
+  return fat >= ate ? ['good', 'No ritmo'] : ['bad', 'Abaixo do ritmo'];
+}
+function metaDoMes(m0, H, fat) {
+  if (!D.meta || ehRca()) return null;            // pacote de antes da 1.5, ou RCA (a meta é da região)
+  const m1 = mesSeg(m0, 1);
+  let total = 0, ate = 0, dias = 0;
+  for (const x of D.meta) if (x.d >= m0 && x.d < m1) { total += x.v; if (x.d < H) ate += x.v; else dias++; }
+  if (!total) return { sem: true };
+  return { total, ate, dias, fat, falta: total - fat, st: situacaoMeta(fat, total, ate) };
+}
+function blocoMeta(mt) {
+  const fr = mt.fat / mt.total, batida = mt.falta <= 0;
+  const falta = batida ? `<b>${brlK(-mt.falta)}</b> acima da meta`
+    : mt.dias ? `faltam <b>${brlK(mt.falta)}</b> · <b>${brlK(mt.falta / mt.dias)}</b> por dia útil`
+    : `faltaram <b>${brlK(mt.falta)}</b>`;
+  // a marca do ritmo só ajuda enquanto a meta não foi batida
+  return `<span class="meta-barra${batida ? ' batida' : ''}" style="--fr:${Math.min(1, fr).toFixed(4)};--ritmo:${Math.min(1, mt.ate / mt.total).toFixed(4)}" role="img" aria-label="${pct(fr, 0)} da meta${batida ? '' : '; o esperado até ontem era ' + pct(mt.ate / mt.total, 0)}"><i></i>${batida ? '' : '<b></b>'}</span>
+      <span class="meta-leg"><span><b>${pct(fr, 0)}</b> da meta${batida ? '' : ` · esperado até ontem ${pct(mt.ate / mt.total, 0)}`}</span><span class="pill ${mt.st[0]}">${mt.st[1]}</span></span>
+      <span class="meta-falta">${falta}</span>`;
+}
+/* o gestor vê, no mesmo cartão, a soma de todas as regiões (do resumo dos setores) */
+function metaTodas(m0) {
+  if (!ehGerente() || !R || !R.meses.length || R.meses[R.meses.length - 1] !== m0) return '';
+  const i0 = R.meses.length - 1;
+  let fat = 0, total = 0, ate = 0;
+  for (const s of R.setores) { fat += s.venda[i0] || 0; if (s.meta) { total += +s.meta[i0] || 0; ate += +s.metaAte[i0] || 0; } }
+  if (!total) return '';
+  const st = situacaoMeta(fat, total, ate);
+  return `<span class="meta-todas"><span>Todas as regiões</span><span><b>${brlK(fat)}</b> de ${brlK(total).replace('R$ ', '')} <span class="pill ${st[0]}">${pct(fat / total, 0)}</span></span></span>`;
+}
+
 /* ---------------- aba: resumo (o dia numa tela só) ---------------- */
 function vResumo() {
   const H = D.hoje, m0 = mesDe(H);
@@ -278,6 +317,8 @@ function vResumo() {
   const semPed = !ehRca() && dow(H) !== 0
     ? D.rcas.filter(r => r.ativo && D.nf.some(o => o.rca === r.cod && o.d >= H - 30) && !D.ped.some(o => o.d === H && o.rca === r.cod)).length : 0;
   const delta = (v, txt) => v == null ? '' : `<span class="delta ${v >= 0 ? 'up' : 'down'}">${v >= 0 ? '▲' : '▼'} ${pct(Math.abs(v), 0)}</span> ${txt}`;
+  const mt = metaDoMes(m0, H, mes.vl), comMeta = mt && !mt.sem, nomeM = MESES_L[dt(H).getUTCMonth()];
+  const comparacao = dMes != null ? delta(dMes, 'vs. ' + MESES[dt(a0).getUTCMonth()] + ' no mesmo período') : nf0.format(mes.pos) + ' clientes faturados';
   return `
   <div class="resumo">
     <button type="button" class="hoje-card" data-a="ir" data-v="vendas:hoje">
@@ -291,12 +332,20 @@ function vResumo() {
       </span>
       ${semPed ? `<span class="alerta">${semPed} ${semPed > 1 ? 'RCAs ativos sem pedido' : 'RCA ativo sem pedido'} hoje</span>` : ''}
     </button>
-    <button type="button" class="mes-card" data-a="ir" data-v="vendas:periodo">
-      <span class="cartao-rot">${ic('cash')}Faturado em ${MESES_L[dt(H).getUTCMonth()]} <small>até ${dm(H)}</small>${ic('frente', 'seta')}</span>
+    ${comMeta ? `<button type="button" class="mes-card com-meta" data-a="ir" data-v="vendas:periodo">
+      <span class="cartao-rot">${ic('cash')}Meta de ${nomeM} <small>${mt.dias ? `${mt.dias} ${mt.dias === 1 ? 'dia útil' : 'dias úteis'} com hoje` : 'mês fechado'}</small>${ic('frente', 'seta')}</span>
+      <span class="linha-valor"><span class="valor-grande" data-cnt="${mes.vl}" data-f="brlK">${brlK(mes.vl)}</span><span class="meta-de">de ${brlK(mt.total)}</span></span>
+      ${blocoMeta(mt)}
+      <span class="sub">margem ${pct(mes.mg)} · ${comparacao}</span>
+      ${metaTodas(m0)}
+    </button>` : `<button type="button" class="mes-card" data-a="ir" data-v="vendas:periodo">
+      <span class="cartao-rot">${ic('cash')}Faturado em ${nomeM} <small>até ${dm(H)}</small>${ic('frente', 'seta')}</span>
       <span class="linha-valor"><span class="valor-grande" data-cnt="${mes.vl}" data-f="brlK">${brlK(mes.vl)}</span><span class="pill">margem ${pct(mes.mg)}</span></span>
-      <span class="sub">${dMes != null ? delta(dMes, 'vs. ' + MESES[dt(a0).getUTCMonth()] + ' no mesmo período') : nf0.format(mes.pos) + ' clientes faturados'}</span>
+      <span class="sub">${comparacao}</span>
+      ${mt && mt.sem ? `<span class="meta-sem">Sem meta cadastrada no WinThor em ${nomeM}.</span>` : ''}
       ${miniBarras(m0, H)}
-    </button>
+      ${metaTodas(m0)}
+    </button>`}
     <div class="tiles">
       <button type="button" class="tile ouro" data-a="ir" data-v="carteira:pos">${anel(fp)}<span class="cartao-rot">${ic('users')}Carteira</span><span class="v" data-cnt="${fp}" data-f="pct0">${pct(fp, 0)}</span><span class="d">${nf0.format(pos)} de ${nf0.format(cart.length)} compraram no mês</span></button>
       <button type="button" class="tile perigo" data-a="ir" data-v="inad:resumo"><span class="cartao-rot">${ic('alert')}Vencido</span><span class="v" data-cnt="${vt}" data-f="brlK">${brlK(vt)}</span><span class="d">${nf0.format(vc)} ${vc === 1 ? 'cliente' : 'clientes'} com título vencido</span></button>
@@ -367,13 +416,14 @@ function vVendas() {
       <div class="nota">Toque num RCA para ver a venda só dele.</div>`;
   };
   const setoresPag = () => {
-    const i0 = R.meses.length - 1, ls = R.setores.map(s => ({ s, v: s.venda[i0], c: s.cmv[i0], pos: s.pos[i0] })).sort((a, b) => b.v - a.v);
+    const i0 = R.meses.length - 1, ls = R.setores.map(s => ({ s, v: s.venda[i0], c: s.cmv[i0], pos: s.pos[i0], mt: s.meta ? +s.meta[i0] || 0 : 0, ate: +s.metaAte[i0] || 0 })).sort((a, b) => b.v - a.v);
     const mx = ls.length ? ls[0].v || 1 : 1;
+    // 1.5: com meta, a pílula mostra quanto da meta do mês a região já faturou (a cor segue o ritmo)
     const rows = ls.map(x => `
       <button type="button" class="row${x.s.cod === D.setor.cod ? ' sel' : ''}" data-a="setor" data-v="${x.s.cod}">
         <span class="t">${esc(x.s.nome)}</span><span class="r">${brlK(x.v)}</span>
-        <span class="sub">${nf0.format(x.pos)} clientes positivados</span><span class="sub r"><span class="pill">margem ${pct(x.v ? (x.v - x.c) / x.v : 0)}</span></span>
-        <span class="full">${bar(x.v / mx, 'gold')}</span>
+        <span class="sub">${nf0.format(x.pos)} positivados · margem ${pct(x.v ? (x.v - x.c) / x.v : 0)}</span><span class="sub r">${x.mt ? `<span class="pill ${situacaoMeta(x.v, x.mt, x.ate)[0]}">${pct(x.v / x.mt, 0)} da meta</span>` : '<span class="pill">sem meta</span>'}</span>
+        <span class="full">${bar(x.mt ? x.v / x.mt : x.v / mx, 'gold')}</span>
       </button>`);
     return `<div class="h">Por setor <small>${nomeMes(R.meses[i0])} · toque para abrir</small></div><div class="list" data-lista="v-setores">${limitar(rows, 6, 'v-setores', 'Venda por setor')}</div>`;
   };
@@ -1326,7 +1376,7 @@ async function abrirEscopo(escopo, aoMontar) {
   }
 }
 function montarResumo(p) {
-  return { meses: p.meses || [], hoje: p.hoje, gerado: p.gerado_em || String(Date.now()), setores: (p.setores || []).map(s => ({ cod: s[0], nome: s[1], venda: s[2], cmv: s[3], dev: s[4], vencido: +s[5] || 0, juridico: +s[6] || 0, clientes: s[7] || 0, pos: s[8] || [] })) };
+  return { meses: p.meses || [], hoje: p.hoje, gerado: p.gerado_em || String(Date.now()), setores: (p.setores || []).map(s => ({ cod: s[0], nome: s[1], venda: s[2], cmv: s[3], dev: s[4], vencido: +s[5] || 0, juridico: +s[6] || 0, clientes: s[7] || 0, pos: s[8] || [], meta: s[9] || null, metaAte: s[10] || [] })) };
 }
 async function carregarTudo() {
   if (baixando) return; baixando = true; ultimaConferencia = Date.now();

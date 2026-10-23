@@ -13,8 +13,11 @@
 --
 -- O que muda nos pacotes:
 --   pacote_setor(p) ganha 'meta': [[dia (dias desde 1970-01-01), meta do dia], ...] da janela do pacote.
---   pacote_resumo() ganha, em cada setor, [9] meta do mês e [10] meta até hoje, alinhadas com 'meses'
---   (0 = sem meta cadastrada). "Meta até hoje" = soma dos dias úteis até hoje: é o ritmo esperado.
+--   pacote_resumo() ganha, em cada setor, [9] meta do mês e [10] meta até ontem, alinhadas com 'meses'
+--   (0 = sem meta cadastrada). "Meta até ontem" = soma dos dias úteis que já terminaram: é o ritmo esperado
+--   (o dia de hoje ainda está faturando; contar a meta dele deixaria todo mundo "abaixo do ritmo" de manhã).
+--   Primeira versão (supervisor_v2_meta) mandava "até hoje"; trocada no mesmo dia (supervisor_v2_meta_ate_ontem),
+--   antes de o app usar o campo.
 -- =============================================================================
 
 create table if not exists supervisor.meta (
@@ -160,7 +163,7 @@ tit as (
 ),
 meta as (
   select m.codsupervisor as cod, date_trunc('month', m.data)::date as mes, sum(m.meta) as v,
-         sum(m.meta) filter (where m.data <= par.hoje) as ate_hoje
+         sum(m.meta) filter (where m.data < par.hoje) as ate_ontem
     from supervisor.meta m, par where m.data >= par.ini group by 1, 2
 ),
 meses as (
@@ -178,9 +181,9 @@ select json_build_object(
        (select json_agg(round(coalesce(d.v, 0), 2) order by m.mes) from meses m left join dev d on d.cod = s.cod and d.mes = m.mes),
        round(coalesce(t.vencido, 0), 2), round(coalesce(t.juridico, 0), 2), coalesce(t.clientes, 0),
        (select json_agg(coalesce(v.pos, 0) order by m.mes) from meses m left join venda v on v.cod = s.cod and v.mes = m.mes),
-       -- [9] meta do mês e [10] meta até hoje, alinhadas com "meses" (0 = sem meta cadastrada)
+       -- [9] meta do mês e [10] meta até ontem, alinhadas com "meses" (0 = sem meta cadastrada)
        (select json_agg(round(coalesce(x.v, 0), 2) order by m.mes) from meses m left join meta x on x.cod = s.cod and x.mes = m.mes),
-       (select json_agg(round(coalesce(x.ate_hoje, 0), 2) order by m.mes) from meses m left join meta x on x.cod = s.cod and x.mes = m.mes)
+       (select json_agg(round(coalesce(x.ate_ontem, 0), 2) order by m.mes) from meses m left join meta x on x.cod = s.cod and x.mes = m.mes)
      ) order by s.nome)
      from setores s left join tit t on t.cod = s.cod), '[]')
 );

@@ -280,6 +280,21 @@ button.row:active { background: var(--press); transition: none; }
 .mini { width: 100%; height: 30px; display: block; margin-top: 2px; }
 .mini rect { fill: var(--dado); opacity: .8; }
 .mini rect.hl { fill: var(--gold); opacity: 1; }
+/* meta do mês (1.5): faturado contra a meta da região, com a marca do ritmo esperado até ontem */
+.mes-card.com-meta { border-color: var(--gold-line); }
+.meta-de { font: 700 13.5px var(--f-num); color: var(--muted); letter-spacing: -.01em; white-space: nowrap; }
+.meta-barra { position: relative; display: block; height: 10px; margin: 5px 0 1px; border-radius: 5px; background: var(--surface-3); }
+.meta-barra > i { position: absolute; left: 0; top: 0; bottom: 0; width: calc(var(--fr) * 100%); border-radius: 5px; background: linear-gradient(90deg, var(--accent), var(--gold)); }
+.meta-barra.batida > i { background: linear-gradient(90deg, var(--good), var(--gold)); }
+.meta-barra > b { position: absolute; top: -3px; bottom: -3px; left: calc(var(--ritmo) * 100%); width: 2px; margin-left: -1px; border-radius: 1px; background: var(--ink); opacity: .6; }
+.meta-leg { display: flex; justify-content: space-between; align-items: center; gap: 4px 10px; flex-wrap: wrap; font: 600 11.5px var(--f-body); color: var(--muted); }
+.meta-leg b, .meta-falta b { font: 800 12px var(--f-num); color: var(--ink); }
+.meta-leg .pill { margin-left: auto; }
+.meta-falta { font: 600 11.5px var(--f-body); color: var(--muted); }
+.meta-todas { display: flex; justify-content: space-between; align-items: center; gap: 4px 10px; flex-wrap: wrap; border-top: 1px solid var(--line); padding-top: 7px; margin-top: 3px; font: 600 11.5px var(--f-body); color: var(--muted); }
+.meta-todas > span:last-child { margin-left: auto; font: 600 11.5px var(--f-num); white-space: nowrap; }
+.meta-todas b { color: var(--ink); }
+.meta-sem { font: 600 11.5px var(--f-body); color: var(--muted); }
 .tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .tile { position: relative; overflow: hidden; text-align: left; color: inherit; font: inherit; border: 1px solid var(--line); border-radius: 18px; padding: 11px 12px; background: var(--surface); box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 3px; min-height: 96px; min-width: 0; }
 .tile::after { content: ""; position: absolute; right: -36px; top: -36px; width: 110px; height: 110px; border-radius: 50%; background: radial-gradient(closest-side, var(--cor-brilho, rgba(95, 126, 245, .2)), transparent); pointer-events: none; }
@@ -377,6 +392,8 @@ main.em-anim { background: var(--app-solid); min-height: 100dvh; box-shadow: -14
   .entrando .list > * { animation: sobe .5s var(--ios) both; animation-delay: calc(var(--i, 0) * 26ms + 60ms); }
   .entrando .mini rect, .entrando .ch rect { transform-box: fill-box; transform-origin: 50% 100%; animation: cresce .75s var(--ios) both; animation-delay: calc(var(--i, 0) * 14ms + 120ms); }
   .entrando .anel .valor { animation: anel 1.2s var(--ios) both .15s; }
+  .entrando .meta-barra > i { animation: enche 1.1s var(--ios) both .15s; }
+  @keyframes enche { from { width: 0; } }
   @keyframes sobe { from { opacity: 0; transform: translateY(12px); } }
   @keyframes cresce { from { transform: scaleY(0); } }
   @keyframes anel { from { stroke-dasharray: 0 400; } }
