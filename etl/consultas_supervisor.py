@@ -12,6 +12,7 @@ e, daqui, so o que ainda faltava:
     titulo        PCPREST em aberto (+PCCOB)     supervisor.titulo
     pedido        PCPEDC (pedido digitado)       supervisor.pedido
     venda_item    PCMOV operacao S, por mes      supervisor.venda_item_mes
+    meta          PCMETASUP (meta da regiao)     supervisor.meta
 
 Regras (todas repetidas no README):
 1. Setor = supervisor ATUAL do RCA (PCUSUARI.CODSUPERVISOR), a mesma regra da
@@ -200,6 +201,39 @@ def _mapear_venda_item(r: dict) -> tuple:
 
 
 # ===========================================================================
+# meta -> supervisor.meta
+# ===========================================================================
+# Meta de venda da regiao (PCMETASUP, a meta por supervisor da rotina de metas do WinThor): um valor por supervisor e
+# dia util, somado nas filiais. Pedido do Julio (2026-10-23): o Resumo mostra a meta do mes, o faturado, quanto falta e
+# se ja bateu. A soma do mes bate com a da PCMETARCA (meta dos RCAs): em out/2026, R$ 14.690.800 nas duas. A PCMETA
+# e outra coisa (meta por fornecedor, tipo F).
+SQL_META = f"""
+SELECT m.codsupervisor, TRUNC(m.data) AS data, NVL(SUM(m.vlvendaprev), 0) AS meta
+  FROM pcmetasup m
+ WHERE m.codsupervisor IS NOT NULL
+   AND m.data >= ADD_MONTHS(TRUNC(SYSDATE, 'MM'), -{MESES_ANTES})
+   AND m.data <  ADD_MONTHS(TRUNC(SYSDATE, 'MM'), 1)
+ GROUP BY m.codsupervisor, TRUNC(m.data)
+HAVING NVL(SUM(m.vlvendaprev), 0) <> 0
+"""
+
+
+def _mapear_meta(r: dict) -> tuple:
+    return (inteiro(r["codsupervisor"]), _data(r["data"]), num(r["meta"], 0))
+
+
+# Conferencia da meta do mes corrente: a das regioes (PCMETASUP) e a soma da dos RCAs (PCMETARCA).
+def sql_conferencia_meta() -> str:
+    return """
+SELECT (SELECT NVL(SUM(vlvendaprev), 0) FROM pcmetasup
+         WHERE codsupervisor IS NOT NULL AND data >= TRUNC(SYSDATE, 'MM') AND data < ADD_MONTHS(TRUNC(SYSDATE, 'MM'), 1)),
+       (SELECT NVL(SUM(vlvendaprev), 0) FROM pcmetarca
+         WHERE data >= TRUNC(SYSDATE, 'MM') AND data < ADD_MONTHS(TRUNC(SYSDATE, 'MM'), 1))
+  FROM dual
+"""
+
+
+# ===========================================================================
 # Catalogo
 # ===========================================================================
 def catalogo() -> list[Consulta]:
@@ -227,6 +261,12 @@ def catalogo() -> list[Consulta]:
             colunas=("mes", "codcli", "codprod", "codusur", "codsupervisor", "qt", "venda", "cmv", "ultima",
                      "pedidos", "data_carga"),
             mapear=_mapear_venda_item, grupo="completo", streaming=True,
+        ),
+        Consulta(
+            nome="meta", descricao="Meta de venda da regiao por dia util (PCMETASUP)",
+            pagina="Resumo / Vendas", sql=SQL_META, destino="supervisor.meta",
+            colunas=("codsupervisor", "data", "meta"),
+            mapear=_mapear_meta, grupo="completo",
         ),
         Consulta(
             nome="pedido", descricao="Pedido digitado (PCPEDC), sem cancelado e sem bonificacao",

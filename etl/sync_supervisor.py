@@ -39,6 +39,7 @@ import argparse
 import gzip
 import hashlib
 import sys
+import time
 from datetime import datetime
 
 import bi_comum as bi
@@ -118,6 +119,26 @@ def conferir_venda_item(conn_pg) -> tuple[str, str]:
     return "AVISO", f"{len(dif)} setor(es) diferente(s) ({resumo}); a comissao pode ter sido carregada em outro horario: " + "; ".join(dif[:8])
 
 
+def conferir_meta(conn_ora, conn_pg) -> tuple[str, str]:
+    """Mes corrente: a meta gravada x PCMETASUP. A soma da meta dos RCAs (PCMETARCA) vai so como informacao: o WinThor
+    deixa as duas diferentes, e isso nao e erro da carga."""
+    from consultas_supervisor import sql_conferencia_meta
+    with conn_ora.cursor() as cur:
+        cur.execute(sql_conferencia_meta())
+        sup, rca = (round(float(x or 0), 2) for x in cur.fetchone())
+    with conn_pg.cursor() as cur:
+        cur.execute("""SELECT coalesce(sum(meta), 0) FROM supervisor.meta
+                        WHERE data >= date_trunc('month', (now() at time zone 'America/Sao_Paulo')::date)""")
+        pg = round(float(cur.fetchone()[0]), 2)
+    conn_pg.rollback()
+    if abs(pg - sup) > 0.005:
+        return "AVISO", f"Meta do mes no banco {_r(pg)} x WinThor (PCMETASUP) {_r(sup)}"
+    if not sup:
+        return "OK", "A meta do mes ainda nao esta cadastrada no WinThor (o app mostra 'sem meta')"
+    extra = "" if abs(sup - rca) <= 0.005 else f"; a soma da meta dos RCAs (PCMETARCA) e {_r(rca)}"
+    return "OK", f"Meta do mes igual ao WinThor: {_r(sup)}" + extra
+
+
 # ---------------------------------------------------------------------------
 # Pacotes
 # ---------------------------------------------------------------------------
@@ -135,18 +156,34 @@ def _guardar(cur, escopo: str, texto_json: str) -> tuple[int, int]:
     return len(bruto), len(comprimido)
 
 
-def montar_pacotes(conn_pg) -> tuple[int, int, int]:
+# "O sistema nao esta atualizando" (Julio, 2026-10-23): com o banco sobrecarregado, cada setor passou de 20 s para
+# 1 a 5 min (e ainda esperava a carga do COMERCIAL, que apaga e regrava a venda numa transacao so). A soma passava dos
+# 25 min da tarefa agendada e o Windows matava a carga no meio, sem registrar nada: das 12:35 em diante nenhum pacote
+# novo. Agora o resumo do gestor sai primeiro, o setor desiste da trava em 15 s e da consulta em 3 min (fica com o
+# pacote anterior) e nenhum setor novo comeca depois de 19 min de carga: a tarefa sempre termina e registra o que fez.
+ESPERA_TRAVA = "15s"
+TEMPO_SETOR_MS = 180000
+LIMITE_CARGA_S = 19 * 60             # contado do comeco do script: a tarefa da VM para aos 25 min
+INICIO_CARGA = time.monotonic()
+
+
+def montar_pacotes(conn_pg) -> tuple[int, int, int, list[str]]:
     """Um pacote por setor ativo + o resumo do gerente. Cada um numa transacao propria:
-    um setor que falhe nao apaga os outros (e o app segue com o pacote anterior dele)."""
+    um setor que falhe nao apaga os outros (e o app segue com o pacote anterior dele).
+    Devolve (prontos, bytes json, bytes gz, setores que ficaram para a proxima rodada)."""
     with conn_pg.cursor() as cur:
         cur.execute("SELECT supervisor.setores_ativos()")
         setores = [r[0] for r in cur.fetchall()]
     conn_pg.rollback()
-    n, total_json, total_gz, falhas = 0, 0, 0, []
-    for cod in setores + ["G"]:
+    n, total_json, total_gz, falhas, adiados = 0, 0, 0, [], []
+    for cod in ["G"] + setores:          # o resumo do gestor primeiro: ele ve todas as regioes
+        if time.monotonic() - INICIO_CARGA > LIMITE_CARGA_S:
+            adiados.append(str(cod))
+            continue
         try:
             with conn_pg.cursor() as cur:
-                cur.execute("SET LOCAL statement_timeout = 300000")
+                cur.execute(f"SET LOCAL lock_timeout = '{ESPERA_TRAVA}'")
+                cur.execute(f"SET LOCAL statement_timeout = {TEMPO_SETOR_MS}")
                 if cod == "G":
                     cur.execute("SELECT supervisor.pacote_resumo()::text")
                     escopo = "G"
@@ -156,6 +193,10 @@ def montar_pacotes(conn_pg) -> tuple[int, int, int]:
                 bj, bg = _guardar(cur, escopo, cur.fetchone()[0])
             conn_pg.commit()
             n, total_json, total_gz = n + 1, total_json + bj, total_gz + bg
+        except bi.psycopg2.errors.LockNotAvailable:
+            conn_pg.rollback()
+            adiados.append(str(cod))
+            log.warning("  setor %s: tabela em carga em outro sistema; fica o pacote anterior (volta na proxima rodada)", cod)
         except Exception as exc:  # noqa: BLE001
             conn_pg.rollback()
             falhas.append(f"{cod}: {type(exc).__name__}: {exc}")
@@ -172,7 +213,7 @@ def montar_pacotes(conn_pg) -> tuple[int, int, int]:
         conn_pg.rollback()
     if falhas:
         raise RuntimeError(f"{len(falhas)} pacote(s) falharam: " + "; ".join(falhas[:5]))
-    return n, total_json, total_gz
+    return n, total_json, total_gz, adiados
 
 
 def _dizer_como_esta(conn_pg) -> None:
@@ -275,6 +316,9 @@ def main() -> int:
                     if "titulo" in ok:
                         _registrar_passo(conn_pg, resultados, "conferencia_titulo", "supervisor.titulo x PCPREST",
                                          lambda: conferir_titulo(conn_ora, conn_pg))
+                    if "meta" in ok:
+                        _registrar_passo(conn_pg, resultados, "conferencia_meta", "supervisor.meta x PCMETASUP",
+                                         lambda: conferir_meta(conn_ora, conn_pg))
                     if foto_unica:
                         try:
                             conn_ora.rollback()     # encerra a transacao so de leitura
@@ -288,12 +332,17 @@ def main() -> int:
             relogio = bi.cronometro()
             passo = _Passo("pacote", "supervisor.pacote")
             try:
-                n, bj, bg = montar_pacotes(conn_pg)
+                n, bj, bg, adiados = montar_pacotes(conn_pg)
                 segundos = relogio()
                 msg = f"{n} pacotes (setores + resumo): JSON de {bj / 1048576:.1f} MB, {bg / 1048576:.1f} MB comprimido"
+                status = "OK"
+                if adiados:
+                    # o app segue com o pacote anterior desses setores; nao e erro: a proxima rodada refaz
+                    status = "AVISO"
+                    msg += f"; {len(adiados)} ficaram para a proxima rodada (tabela em carga em outro sistema ou banco lento): " + ", ".join(adiados)
                 log.info("  pacotes prontos em %.1fs — %s", segundos, msg)
-                bi.registrar_execucao(conn_pg, passo, "OK", n, segundos, msg)
-                resultados.append((passo.nome, "OK", n, segundos))
+                bi.registrar_execucao(conn_pg, passo, status, n, segundos, msg)
+                resultados.append((passo.nome, status, n, segundos))
             except Exception as exc:  # noqa: BLE001
                 conn_pg.rollback()
                 segundos = relogio()
