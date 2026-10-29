@@ -1,8 +1,8 @@
 {
-  "versionCode": 7,
-  "versao": "1.6",
+  "versionCode": 8,
+  "versao": "1.7",
   "apk": "/baixar/supervisor-lube.apk",
   "publicado": "2026-10-29",
-  "notas": "Novidades: o Faturado e a Margem agora são os mesmos do Central Comercial (total líquido e % líquido).",
+  "notas": "Novidades: o app agora atualiza sozinho, ao vivo, e mostra os valores completos com números mais fáceis de ler.",
   "nota": "O app nativo compara o versionCode dele com este: menor = mostra o aviso para baixar a versao nova. Suba junto com o APK novo em baixar/. Desde a 1.3: 'notas' (texto curto) aparece no alerta; 'obrigatoria': true tira o botao Depois."
 }
