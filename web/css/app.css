@@ -295,6 +295,8 @@ button.row:active { background: var(--press); transition: none; }
 .meta-todas > span:last-child { margin-left: auto; font: 600 11.5px var(--f-num); white-space: nowrap; }
 .meta-todas b { color: var(--ink); }
 .meta-sem { font: 600 11.5px var(--f-body); color: var(--muted); }
+/* "margem 21,0356%" quebra inteiro para a linha de baixo, nunca no meio (1.6, margem com 4 casas) */
+.nw { white-space: nowrap; }
 .tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .tile { position: relative; overflow: hidden; text-align: left; color: inherit; font: inherit; border: 1px solid var(--line); border-radius: 18px; padding: 11px 12px; background: var(--surface); box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 3px; min-height: 96px; min-width: 0; }
 .tile::after { content: ""; position: absolute; right: -36px; top: -36px; width: 110px; height: 110px; border-radius: 50%; background: radial-gradient(closest-side, var(--cor-brilho, rgba(95, 126, 245, .2)), transparent); pointer-events: none; }

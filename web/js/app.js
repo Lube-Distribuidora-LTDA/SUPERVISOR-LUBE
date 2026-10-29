@@ -53,6 +53,9 @@ const brl = v => 'R$ ' + nf0.format(Math.round(v));
 const brl2 = v => 'R$ ' + nf2.format(v);
 const brlK = v => { const a = Math.abs(v); if (a >= 1e6) return 'R$ ' + nf2.format(v / 1e6) + ' mi'; if (a >= 1e4) return 'R$ ' + nf1.format(v / 1e3) + ' mil'; return brl(v); };
 const pct = (v, d) => (d === 0 ? nf0 : nf1).format((isFinite(v) ? v : 0) * 100) + '%';
+/* MARGEM com 4 casas, como o Central Comercial mostra o % líquido (1.6) */
+const nf4 = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 4, maximumFractionDigits: 4 });
+const pctM = v => nf4.format((isFinite(v) ? v : 0) * 100) + '%';
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const titulo = s => String(s || '').toLowerCase().replace(/(^|\s|\/|-|\()(\S)/g, (m, a, b) => a + b.toUpperCase()).replace(/\b(Do|Da|De|Dos|Das|E)\b/g, w => w.toLowerCase());
 const semAcento = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
@@ -112,7 +115,15 @@ function montar(p) {
     tipo: (p.escopo && p.escopo.tipo) || 'setor', codusur: p.escopo && p.escopo.codusur,
     setor: p.setor || { cod: null, nome: '' }, hoje: p.hoje, ini: p.ini, cargas: p.cargas || {}, gerado: p.gerado_em,
     rcas: (p.rcas || []).map(r => ({ cod: r[0], nome: titulo(r[1]), ativo: !!r[2] })),
-    nf: (p.nf || []).map(r => ({ d: r[0], ped: r[1], cli: r[2], rca: r[3], vl: +r[4] || 0, cmv: +r[5] || 0 })),
+    // 1.6 (Júlio, 2026-10-29): FATURADO = o "total líquido" do Central Comercial (venda − devolução com ST) e MARGEM =
+    // o "% líquido" (massa de margem ÷ total líquido sem ST). A devolução vem em linha própria, na data dela e com o
+    // pedido original. vb é a venda antes da devolução: conta positivação, pedidos, ticket e compras do cliente.
+    // Pacote de antes da 1.6 (sem [6]): o faturado volta a ser a venda.
+    nf: (p.nf || []).map(r => {
+      const vb = +r[4] || 0, novo = r[6] != null;
+      return { d: r[0], ped: r[1], cli: r[2], rca: r[3], vb, vl: novo ? +r[6] || 0 : vb,
+               ls: novo ? +r[7] || 0 : vb, ms: novo ? +r[8] || 0 : vb - (+r[5] || 0) };
+    }),
     ped: (p.ped || []).map(r => ({ d: r[0], min: r[1], num: r[2], cli: r[3], rca: r[4], vl: +r[5] || 0, pos: r[6], ori: r[7], dfat: r[8] })),
     tit: (p.tit || []).map(r => ({ cli: r[0], rca: r[1], dup: r[2], prest: r[3], venc: r[4], valor: +r[5] || 0, cob: r[6], grupo: r[7], fil: r[8], emis: r[9] })),
     item: (p.item || []).map(r => ({ mes: r[0], cli: r[1], p: r[2], rca: r[3], q: +r[4] || 0, v: +r[5] || 0, c: +r[6] || 0, ult: r[7], n: r[8] || 0 })),
@@ -144,9 +155,9 @@ const naCarteira = c => ehRca() ? c.rca === D.codusur : c.sup === D.setor.cod;
 const carteiraAtiva = c => (c.ult != null && c.ult >= D.hoje - 180) || (c.cad != null && c.cad >= D.hoje - 90);
 
 function resumoNf(list) {
-  let vl = 0, cmv = 0; const cl = new Set(), pd = new Set();
-  for (const o of list) { vl += o.vl; cmv += o.cmv; if (o.vl > 0) { cl.add(o.cli); pd.add(o.ped); } }
-  return { vl, cmv, mg: vl ? (vl - cmv) / vl : 0, ped: pd.size, pos: cl.size, tk: pd.size ? vl / pd.size : 0 };
+  let vl = 0, vb = 0, ls = 0, ms = 0; const cl = new Set(), pd = new Set();
+  for (const o of list) { vl += o.vl; vb += o.vb; ls += o.ls; ms += o.ms; if (o.vb > 0) { cl.add(o.cli); pd.add(o.ped); } }
+  return { vl, vb, ms, mg: ls ? ms / ls : 0, ped: pd.size, pos: cl.size, tk: pd.size ? vb / pd.size : 0 };
 }
 function resumoPed(list) {
   let vl = 0; const cl = new Set();
@@ -236,7 +247,7 @@ function graficoDias(d1, d2, fonte, rca, destaque) {
   r += `<line class="g" x1="0" x2="${W}" y1="${T}" y2="${T}"/><line class="g" x1="0" x2="${W}" y1="${H - B}" y2="${H - B}"/>`;
   if (!rotulos) r += `<text x="0" y="${T - 6}">${brlK(max)}</text>`;
   vals.forEach((v, i) => {
-    if (!v) return;
+    if (v <= 0) return;   // dia só com devolução fica sem barra (o faturado é líquido desde a 1.6)
     const h = v / max * (H - T - B), x = i * bw + bw * .15, w = Math.max(1, bw * .7);
     r += `<rect class="${dias[i] === destaque ? 'hl' : 'b'}" x="${x.toFixed(1)}" y="${(H - B - h).toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" rx="1.5" style="--i:${i}"><title>${diaLongo(dias[i])}: ${brl2(v)}</title></rect>`;
     if (rotulos) r += `<text x="${(x + w / 2).toFixed(1)}" y="${(H - B - h - 4).toFixed(1)}" text-anchor="middle">${brlK(v)}</text>`;
@@ -304,7 +315,7 @@ function vResumo() {
   const mAnt = a0 >= D.ini ? resumoNf(D.nf.filter(o => o.d >= a0 && o.d <= a1)) : null;
   const dMes = mAnt && mAnt.vl ? mes.vl / mAnt.vl - 1 : null;
   const cart = D.cli.filter(c => naCarteira(c) && carteiraAtiva(c));
-  const comprou = new Set(); for (const o of D.nf) if (o.d >= m0 && o.vl > 0) comprou.add(o.cli);
+  const comprou = new Set(); for (const o of D.nf) if (o.d >= m0 && o.vb > 0) comprou.add(o.cli);
   const pos = cart.filter(c => comprou.has(c.cod)).length, fp = cart.length ? pos / cart.length : 0;
   const venc = D.tit.filter(t => t.grupo === 'cobranca' && t.venc < H), vt = soma(venc, t => t.valor), vc = new Set(venc.map(t => t.cli)).size;
   const devM = soma(D.dev.filter(x => x.d >= m0 && x.d <= H), x => x.v);
@@ -336,11 +347,11 @@ function vResumo() {
       <span class="cartao-rot">${ic('cash')}Meta de ${nomeM} <small>${mt.dias ? `${mt.dias} ${mt.dias === 1 ? 'dia útil' : 'dias úteis'} com hoje` : 'mês fechado'}</small>${ic('frente', 'seta')}</span>
       <span class="linha-valor"><span class="valor-grande" data-cnt="${mes.vl}" data-f="brlK">${brlK(mes.vl)}</span><span class="meta-de">de ${brlK(mt.total)}</span></span>
       ${blocoMeta(mt)}
-      <span class="sub">margem ${pct(mes.mg)} · ${comparacao}</span>
+      <span class="sub"><span class="nw">Margem <b>${pctM(mes.mg)}</b></span> · ${comparacao}</span>
       ${metaTodas(m0)}
     </button>` : `<button type="button" class="mes-card" data-a="ir" data-v="vendas:periodo">
       <span class="cartao-rot">${ic('cash')}Faturado em ${nomeM} <small>até ${dm(H)}</small>${ic('frente', 'seta')}</span>
-      <span class="linha-valor"><span class="valor-grande" data-cnt="${mes.vl}" data-f="brlK">${brlK(mes.vl)}</span><span class="pill">margem ${pct(mes.mg)}</span></span>
+      <span class="linha-valor"><span class="valor-grande" data-cnt="${mes.vl}" data-f="brlK">${brlK(mes.vl)}</span><span class="pill">Margem ${pctM(mes.mg)}</span></span>
       <span class="sub">${comparacao}</span>
       ${mt && mt.sem ? `<span class="meta-sem">Sem meta cadastrada no WinThor em ${nomeM}.</span>` : ''}
       ${miniBarras(m0, H)}
@@ -376,7 +387,7 @@ function vVendas() {
     return `
     <div class="pilulas">${pilRca('v-rca', rca)}${pilData('v-dia', 'Dia', V.dia)}</div>
     <div class="h">Venda do dia <small>${diaLongo(V.dia)}${parcial}</small></div>
-    <div class="kpis k2">${kpi('Digitado', brlK(pd.vl), dTxt, 'hero')}${kpi('Faturado', brlK(fd.vl), fd.vl ? 'margem ' + pct(fd.mg) : 'notas do dia')}${kpi('Pedidos', nf0.format(pd.ped), 'digitados')}${kpi('Positivação', nf0.format(pd.pos), 'clientes com pedido')}${kpi('Ticket médio', brlK(pd.tk), 'por pedido')}</div>
+    <div class="kpis k2">${kpi('Digitado', brlK(pd.vl), dTxt, 'hero')}${kpi('Faturado', brlK(fd.vl), fd.vb ? 'Margem ' + pctM(fd.mg) : 'notas do dia')}${kpi('Pedidos', nf0.format(pd.ped), 'digitados')}${kpi('Positivação', nf0.format(pd.pos), 'clientes com pedido')}${kpi('Ticket médio', brlK(pd.tk), 'por pedido')}</div>
     ${sem ? `<button type="button" class="faixa toque" data-a="pag" data-v="rcas">${sem} ${sem > 1 ? 'RCAs ativos ainda sem pedido' : 'RCA ativo ainda sem pedido'} hoje${ic('frente', 'seta')}</button>` : ''}`;
   };
   const periodoPag = () => {
@@ -386,7 +397,7 @@ function vVendas() {
     ${chips('v-q', V.q, [['hoje', 'Hoje'], ['semana', 'Semana'], ['mes', 'Mês'], ['ant', 'Mês anterior'], ['3m', '3 meses'], ['', 'Escolher datas']], 'rola')}
     ${V.q === '' ? `<div class="pilulas">${pilData('v-de', 'De', V.de)}${pilData('v-ate', 'Até', V.ate)}</div>` : ''}
     <div class="h">Acumulado <small>${dmy(V.de)} a ${dmy(V.ate)}${rca ? ' · ' + esc(rcaNome(rca)) : ''}</small></div>
-    <div class="kpis k2">${kpi('Venda', brlK(per.vl), 'faturada', 'hero')}${kpi('Margem', pct(per.mg), brlK(per.vl - per.cmv) + ' de lucro bruto')}${kpi('Digitado', brlK(pp.vl), nf0.format(pp.ped) + ' pedidos')}${kpi('Positivação', nf0.format(per.pos), 'clientes faturados')}${kpi('Ticket médio', brlK(per.tk), nf0.format(per.ped) + ' pedidos faturados')}</div>
+    <div class="kpis k2">${kpi('Faturado', brlK(per.vl), 'venda menos devolução', 'hero')}${kpi('Margem', pctM(per.mg), brlK(per.ms) + ' de massa de margem')}${kpi('Digitado', brlK(pp.vl), nf0.format(pp.ped) + ' pedidos')}${kpi('Positivação', nf0.format(per.pos), 'clientes faturados')}${kpi('Ticket médio', brlK(per.tk), nf0.format(per.ped) + ' pedidos faturados')}</div>
     ${seg('v-graf', V.graf, [['fat', 'Faturado por dia'], ['dig', 'Digitado por dia']])}
     <div class="card">${graficoDias(V.de, V.ate, V.graf, rca, V.dia) || '<span class="muted">Escolha um período com mais de um dia para ver a venda diária.</span>'}</div>`;
   };
@@ -405,24 +416,24 @@ function vVendas() {
         <span class="t">${esc(r.nome)} <span class="code">${r.cod}</span></span>
         <span class="r">${brlK(fv.vl)}</span>
         <span class="sub">faturado · digitado ${brlK(g.vl)} em ${g.ped} ${g.ped === 1 ? 'pedido' : 'pedidos'} ${qr === 'dia' && ref === H && !g.ped ? '<span class="pill warn">sem pedido hoje</span>' : ''}</span>
-        <span class="sub r"><span class="pill ${fv.vl && fv.mg < .12 ? 'warn' : ''}">margem ${pct(fv.mg)}</span></span>
+        <span class="sub r"><span class="pill ${fv.vl && fv.mg < .12 ? 'warn' : ''}">margem ${pctM(fv.mg)}</span></span>
         <span class="sub full">${fv.pos} clientes positivados · ${fv.ped} pedidos faturados</span>
         <span class="full">${bar(fv.vl / tot)}</span>
       </button>`);
     return `<div class="pilulas">${chips('v-qr', qr, [['mes', 'Mês'], ['semana', 'Semana'], ['dia', 'Dia']])}${pilData('v-dia', qr === 'dia' ? 'Dia' : 'Até', ref)}</div>
       <div class="h">Por RCA <small>${rotulo}</small></div>
       <div class="list" data-lista="v-rcas">${rows.length ? limitar(rows, 5, 'v-rcas', 'Venda por RCA') : vazio('Nenhum RCA ativo no setor.')}</div>
-      ${avisoInativo(soma(D.nf.filter(o => na(o) && !rcaAtivo(o.rca)), o => o.vl), 'de venda faturada')}
+      ${avisoInativo(soma(D.nf.filter(o => na(o) && !rcaAtivo(o.rca)), o => o.vl), 'de faturado')}
       <div class="nota">Toque num RCA para ver a venda só dele.</div>`;
   };
   const setoresPag = () => {
-    const i0 = R.meses.length - 1, ls = R.setores.map(s => ({ s, v: s.venda[i0], c: s.cmv[i0], pos: s.pos[i0], mt: s.meta ? +s.meta[i0] || 0 : 0, ate: +s.metaAte[i0] || 0 })).sort((a, b) => b.v - a.v);
+    const i0 = R.meses.length - 1, ls = R.setores.map(s => ({ s, v: s.venda[i0], tls: +s.tls[i0] || 0, ms: +s.massa[i0] || 0, pos: s.pos[i0], mt: s.meta ? +s.meta[i0] || 0 : 0, ate: +s.metaAte[i0] || 0 })).sort((a, b) => b.v - a.v);
     const mx = ls.length ? ls[0].v || 1 : 1;
     // 1.5: com meta, a pílula mostra quanto da meta do mês a região já faturou (a cor segue o ritmo)
     const rows = ls.map(x => `
       <button type="button" class="row${x.s.cod === D.setor.cod ? ' sel' : ''}" data-a="setor" data-v="${x.s.cod}">
         <span class="t">${esc(x.s.nome)}</span><span class="r">${brlK(x.v)}</span>
-        <span class="sub">${nf0.format(x.pos)} positivados · margem ${pct(x.v ? (x.v - x.c) / x.v : 0)}</span><span class="sub r">${x.mt ? `<span class="pill ${situacaoMeta(x.v, x.mt, x.ate)[0]}">${pct(x.v / x.mt, 0)} da meta</span>` : '<span class="pill">sem meta</span>'}</span>
+        <span class="sub">${nf0.format(x.pos)} positivados · <span class="nw">margem ${pctM(x.tls ? x.ms / x.tls : 0)}</span></span><span class="sub r">${x.mt ? `<span class="pill ${situacaoMeta(x.v, x.mt, x.ate)[0]}">${pct(x.v / x.mt, 0)} da meta</span>` : '<span class="pill">sem meta</span>'}</span>
         <span class="full">${bar(x.mt ? x.v / x.mt : x.v / mx, 'gold')}</span>
       </button>`);
     return `<div class="h">Por setor <small>${nomeMes(R.meses[i0])} · toque para abrir</small></div><div class="list" data-lista="v-setores">${limitar(rows, 6, 'v-setores', 'Venda por setor')}</div>`;
@@ -441,14 +452,15 @@ function vCarteira() {
   const cartSet = new Set(cart.map(c => c.cod));
   const vendas = new Map();
   for (const o of D.nf) {
-    if (o.d < d1 || o.d > d2 || o.vl <= 0 || (rca && o.rca !== rca)) continue;
-    const x = vendas.get(o.cli) || { vl: 0, n: new Set() }; x.vl += o.vl; x.n.add(o.ped); vendas.set(o.cli, x);
+    // a carteira olha o que o cliente comprou: venda antes da devolução (vb)
+    if (o.d < d1 || o.d > d2 || o.vb <= 0 || (rca && o.rca !== rca)) continue;
+    const x = vendas.get(o.cli) || { vl: 0, n: new Set() }; x.vl += o.vb; x.n.add(o.ped); vendas.set(o.cli, x);
   }
   const potIni = mesSeg(d1, -3), temPot = potIni >= D.ini;
   const pot = new Map(), ult = new Map();
   for (const o of D.nf) {
-    if (o.vl <= 0 || (rca && o.rca !== rca)) continue;
-    if (o.d >= potIni && o.d < d1) pot.set(o.cli, (pot.get(o.cli) || 0) + o.vl);
+    if (o.vb <= 0 || (rca && o.rca !== rca)) continue;
+    if (o.d >= potIni && o.d < d1) pot.set(o.cli, (pot.get(o.cli) || 0) + o.vb);
     if (o.d <= d2 && (!ult.has(o.cli) || ult.get(o.cli) < o.d)) ult.set(o.cli, o.d);
   }
   const ultima = c => { const u = ult.get(c.cod); return u != null ? u : (c.ult != null && c.ult <= d2 ? c.ult : null); };
@@ -515,8 +527,9 @@ function telDigitos(s, min) { const d = String(s || '').replace(/\D/g, '').repla
 function telaCliente(cod) {
   const H = D.hoje, c = D.CMAP.get(cod);
   if (!c) return { titulo: 'Cliente ' + cod, html: `<div class="msg">O cliente ${esc(cod)} não faz parte da sua base${ehRca() ? ' (sua rota)' : ' (sua região)'}, ou não compra há mais de um ano. Confira o código.</div>` };
-  const nfs = D.nf.filter(o => o.cli === c.cod && o.vl > 0);
-  const porPed = new Map(); for (const o of nfs) { const x = porPed.get(o.ped) || { d: o.d, vl: 0, cmv: 0 }; x.vl += o.vl; x.cmv += o.cmv; x.d = Math.max(x.d, o.d); porPed.set(o.ped, x); }
+  // compras do cliente: o valor do pedido é a venda (vb); a margem do pedido é a líquida (massa ÷ total sem ST)
+  const nfs = D.nf.filter(o => o.cli === c.cod && o.vb > 0);
+  const porPed = new Map(); for (const o of nfs) { const x = porPed.get(o.ped) || { d: o.d, vl: 0, ls: 0, ms: 0 }; x.vl += o.vb; x.ls += o.ls; x.ms += o.ms; x.d = Math.max(x.d, o.d); porPed.set(o.ped, x); }
   const peds = [...porPed.entries()].map(([num, x]) => ({ num, ...x })).sort((a, b) => a.d - b.d);
   const datas = [...new Set(peds.map(p => p.d))].sort((a, b) => a - b);
   const ultD = datas.length ? datas[datas.length - 1] : (c.ult != null ? c.ult : null);
@@ -589,7 +602,7 @@ function telaCliente(cod) {
       <div class="row"><span class="t">Pedido ${o.num}</span><span class="r">${brl(o.vl)}</span>
       <span class="sub">${diaLongo(o.d)} · digitado</span><span class="sub r"><span class="pill warn">${({ L: 'liberado', B: 'bloqueado', M: 'montado', P: 'pendente' })[o.pos] || 'em aberto'}</span></span></div>`).concat(peds.slice(-10).reverse().map(o => `
       <div class="row"><span class="t">Pedido ${o.num}</span><span class="r">${brl(o.vl)}</span>
-      <span class="sub">${diaLongo(o.d)} · faturado</span><span class="sub r">margem ${pct(o.vl ? (o.vl - o.cmv) / o.vl : 0)}</span></div>`));
+      <span class="sub">${diaLongo(o.d)} · faturado</span><span class="sub r">margem ${pctM(o.ls ? o.ms / o.ls : 0)}</span></div>`));
     return `${chips('k-modo', S.k.modo, [['forn', 'Por fornecedor'], ['prod', 'Por produto'], ['ped', 'Pedidos']])}
       <div class="list" data-lista="k-${S.k.modo}">${rows.length ? limitar(rows, 6, 'k-' + S.k.modo, 'Compras de ' + c.fantasia) : vazio(S.k.modo === 'ped' ? 'Sem pedidos nos últimos meses.' : 'Sem compras nos últimos meses.')}</div>`;
   };
@@ -621,7 +634,7 @@ function resultadosBusca() {
     return `<div class="h">Resultado <small>${ach.length >= 40 ? 'os 40 primeiros' : ach.length + (ach.length === 1 ? ' cliente' : ' clientes')}</small></div><div class="list">${ach.length ? ach.map(c => `<button type="button" class="row" data-a="cli" data-v="${c.cod}"><span class="t">${marca(c.fantasia)} <span class="code">${marca(c.cod)}</span></span><span class="r">${ic('frente')}</span><span class="sub full">${esc(titulo(c.bairro))}${c.bairro ? ' · ' : ''}${esc(titulo(c.cidade))}</span></button>`).join('') : vazio('Nenhum cliente da sua base com esse código ou nome.')}</div>`;
   }
   const m0 = mesDe(H), top = new Map();
-  for (const o of D.nf) if (o.d >= m0 && o.vl > 0) top.set(o.cli, (top.get(o.cli) || 0) + o.vl);
+  for (const o of D.nf) if (o.d >= m0 && o.vb > 0) top.set(o.cli, (top.get(o.cli) || 0) + o.vb);
   const maiores = [...top.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6);
   return `<div class="h">Maiores compradores do mês</div><div class="list">${maiores.length ? maiores.map(([cod, v]) => { const c = D.CMAP.get(cod); return `<button type="button" class="row" data-a="cli" data-v="${cod}"><span class="t">${esc(cliNome(cod))} <span class="code">${cod}</span></span><span class="r">${brl(v)}</span><span class="sub full">${c ? esc(titulo(c.bairro)) + (c.bairro ? ' · ' : '') + esc(titulo(c.cidade)) : ''}</span></button>`; }).join('') : vazio('Sem compras no mês.')}</div>`;
 }
@@ -740,7 +753,8 @@ function vInad() {
 function vDev() {
   const DV = S.d, [d1, d2] = periodo(DV.per);
   const meus = D.dev.filter(x => x.d >= d1 && x.d <= d2);
-  const venda = resumoNf(D.nf.filter(o => o.d >= d1 && o.d <= d2)).vl || 0;
+  // a % de devolução é sobre a venda antes da devolução (vb), não sobre o faturado líquido
+  const venda = resumoNf(D.nf.filter(o => o.d >= d1 && o.d <= d2)).vb || 0;
   const resp = x => { const m = D.mot[x.mot]; return !!(m && m[1]); };
   const tot = soma(meus, x => x.v), rv = soma(meus.filter(resp), x => x.v);
   const notas = new Set(meus.map(x => x.nota)).size;
@@ -750,7 +764,7 @@ function vDev() {
       <div class="row"><span class="t">${esc(titulo((D.mot[k] || [])[0] || 'Motivo ' + k))} ${(D.mot[k] || [])[1] ? '<span class="pill rca">RCA</span>' : ''}</span><span class="r">${brl(y.v)}</span>
       <span class="sub full">${y.n} ${y.n > 1 ? 'ocorrências' : 'ocorrência'}</span><span class="full">${bar(y.v / maxM, 'bad')}</span></div>`);
   const resumo = () => `
-    <div class="kpis k2">${kpi('Devolvido', brlK(tot), `${pct(venda ? tot / venda : 0)} da venda faturada de ${dm(d1)} a ${dm(d2)}`, 'perigo wide')}${kpi('Devoluções', nf0.format(notas), 'notas de devolução')}${kpi('Clientes', nf0.format(new Set(meus.map(x => x.cli)).size), 'que devolveram')}${kpi('Resp. do RCA', brlK(rv), pct(tot ? rv / tot : 0, 0) + ' do total', 'atencao')}${kpi('Venda', brlK(venda), 'faturada')}</div>
+    <div class="kpis k2">${kpi('Devolvido', brlK(tot), `${pct(venda ? tot / venda : 0)} da venda de ${dm(d1)} a ${dm(d2)}`, 'perigo wide')}${kpi('Devoluções', nf0.format(notas), 'notas de devolução')}${kpi('Clientes', nf0.format(new Set(meus.map(x => x.cli)).size), 'que devolveram')}${kpi('Resp. do RCA', brlK(rv), pct(tot ? rv / tot : 0, 0) + ' do total', 'atencao')}${kpi('Venda', brlK(venda), 'antes das devoluções')}</div>
     <div class="h">Principais motivos</div>
     <div class="list">${ml.length ? linhasMot.slice(0, 3).join('') + (ml.length > 3 ? `<button type="button" class="row ver-todos" data-a="pag" data-v="motivos"><span class="t">Ver todos os motivos</span><span class="r"><span>${ml.length}</span>${ic('frente')}</span></button>` : '') : vazio('Nenhuma devolução no período. 👏')}</div>`;
   const linhaDev = (y, filho) => `
@@ -762,7 +776,7 @@ function vDev() {
   const minhasPag = () => `<div class="h">Suas devoluções</div><div class="list" data-lista="d-minhas">${meus.length ? limitar(meus.slice().sort((a, b) => b.d - a.d).map(y => linhaDev(y, false)), 6, 'd-minhas', 'Suas devoluções') : vazio('Nenhuma devolução no período. 👏')}</div>`;
   const rcasPag = () => {
     const porRca = D.ativos.map(r => {
-      const l = meus.filter(x => x.rca === r.cod), v = soma(l, x => x.v), vr = resumoNf(D.nf.filter(o => o.d >= d1 && o.d <= d2 && o.rca === r.cod)).vl;
+      const l = meus.filter(x => x.rca === r.cod), v = soma(l, x => x.v), vr = resumoNf(D.nf.filter(o => o.d >= d1 && o.d <= d2 && o.rca === r.cod)).vb;
       return { r, l, v, p: vr ? v / vr : 0, rv: soma(l.filter(resp), x => x.v) };
     }).filter(x => x.l.length).sort((a, b) => b.v - a.v);
     const maxR = porRca[0] ? porRca[0].v || 1 : 1;
@@ -780,7 +794,7 @@ function vDev() {
   const motivosPag = () => `<div class="h">Motivos <small>${dm(d1)} a ${dm(d2)}</small></div><div class="list" data-lista="d-mot">${ml.length ? limitar(linhasMot, 7, 'd-mot', 'Motivos de devolução') : vazio('Nenhuma devolução no período.')}</div>`;
   const setoresPag = () => {
     const idx = mesesDoPeriodo(DV.per).map(m => R.meses.indexOf(m)).filter(i => i >= 0);
-    const ls = R.setores.map(s => { const v = idx.reduce((a, i) => a + s.dev[i], 0), vd = idx.reduce((a, i) => a + s.venda[i], 0); return { s, v, p: vd ? v / vd : 0 }; }).sort((a, b) => b.p - a.p);
+    const ls = R.setores.map(s => { const v = idx.reduce((a, i) => a + s.dev[i], 0), vd = idx.reduce((a, i) => a + s.vendaBruta[i], 0); return { s, v, p: vd ? v / vd : 0 }; }).sort((a, b) => b.p - a.p);
     const mx = Math.max(...ls.map(x => x.p)) || 1;
     const rows = ls.map(x => `
       <button type="button" class="row${x.s.cod === D.setor.cod ? ' sel' : ''}" data-a="setor" data-v="${x.s.cod}">
@@ -1376,7 +1390,13 @@ async function abrirEscopo(escopo, aoMontar) {
   }
 }
 function montarResumo(p) {
-  return { meses: p.meses || [], hoje: p.hoje, gerado: p.gerado_em || String(Date.now()), setores: (p.setores || []).map(s => ({ cod: s[0], nome: s[1], venda: s[2], cmv: s[3], dev: s[4], vencido: +s[5] || 0, juridico: +s[6] || 0, clientes: s[7] || 0, pos: s[8] || [], meta: s[9] || null, metaAte: s[10] || [] })) };
+  // 1.6: venda = o FATURADO (total líquido, [11]); vendaBruta = a venda antes da devolução ([2]); margem = massa [13] ÷
+  // total líquido sem ST [12]. Resumo de antes da 1.6 (sem [11]): tudo volta à venda e ao custo de antes.
+  return { meses: p.meses || [], hoje: p.hoje, gerado: p.gerado_em || String(Date.now()), setores: (p.setores || []).map(s => {
+    const vb = s[2] || [], c = s[3] || [];
+    return { cod: s[0], nome: s[1], venda: s[11] || vb, vendaBruta: vb, tls: s[12] || vb, massa: s[13] || vb.map((v, i) => v - (c[i] || 0)),
+             dev: s[4], vencido: +s[5] || 0, juridico: +s[6] || 0, clientes: s[7] || 0, pos: s[8] || [], meta: s[9] || null, metaAte: s[10] || [] };
+  }) };
 }
 async function carregarTudo() {
   if (baixando) return; baixando = true; ultimaConferencia = Date.now();
