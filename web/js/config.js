@@ -20,6 +20,6 @@
     site: 'https://supervisor-lube.vercel.app',
     api: nativo ? 'https://supervisor-lube.vercel.app' : '',
     nativo: nativo,
-    versao: '1.6 · 2026-10-29',
+    versao: '1.7 · 2026-10-29',
   };
 })();

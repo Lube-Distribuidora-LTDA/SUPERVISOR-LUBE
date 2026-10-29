@@ -23,11 +23,11 @@ Pastas
   3 - INSTALACAO            o instalador (instalar_e_agendar.ps1)
 
 O que rodar
-  INSTALAR TUDO.bat    uma vez, NA VM SRV-IA: copia o ETL para C:\BI\SUPERVISOR, cria as
-                       tarefas "Supervisor - Pedidos" (de 30 em 30 minutos, das 07:00 as
-                       22:00) e "Supervisor - Completo" (06:20, 11:20, 15:20 e 18:20) e roda
-                       uma carga completa de teste. Rode de novo sempre que o horario ou o
-                       codigo mudar.
+  INSTALAR TUDO.bat    uma vez, NA VM SRV-IA: copia o ETL para C:\BI\SUPERVISOR, cria a
+                       tarefa "Supervisor - Completo" (so as 06:20; desde 2026-10-29 o resto
+                       do dia e o AGENTE LUBE, que le pedidos e titulos em segundos), apaga a
+                       antiga "Supervisor - Pedidos" e roda uma carga completa de teste. Rode
+                       de novo sempre que o horario ou o codigo mudar.
   ATUALIZAR AGORA.bat  quando quiser o dado na hora: copia o ETL e roda uma carga
                        completa, sem mexer no agendamento.
 

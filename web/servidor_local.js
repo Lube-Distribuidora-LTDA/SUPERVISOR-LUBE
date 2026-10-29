@@ -47,6 +47,8 @@ process.env.SUPABASE_DB_PORT = process.env.SUPABASE_DB_PORT || "5432";
 const rotas = {
   "/api/dados": require(path.join(WEB, "api", "dados.js")),
   "/api/acessos": require(path.join(WEB, "api", "acessos.js")),
+  "/api/hoje": require(path.join(WEB, "api", "hoje.js")),
+  "/api/atualizar": require(path.join(WEB, "api", "atualizar.js")),
 };
 const TIPOS = {
   ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",

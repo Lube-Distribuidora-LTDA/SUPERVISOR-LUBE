@@ -53,8 +53,12 @@ app.
 
 Kit em `P:\INTEGRAÇÃO BI\SUPERVISOR` (`INSTALAR TUDO.bat`, `ATUALIZAR AGORA.bat`, `LEIA-ME.txt`):
 
-- `Supervisor - Pedidos`: de 30 em 30 minutos, das 07:00 às 22:00 (pedido digitado + pacotes, ~20 s);
-- `Supervisor - Completo`: 06:20, 11:20, 15:20 e 18:20 (tudo + conferências + pacotes, ~1 min).
+- `Supervisor - Completo`: só às **06:20** (tudo + conferências + o pacote grande do app, ~1 min).
+- **Ao vivo (1.7, 2026-10-29):** o resto do dia é o **AGENTE LUBE** (`Desktop\BI\22. AGENTE LUBE`, fluxos
+  `supervisor.pedido` de 30 em 30 s e `supervisor.titulo` de 60 em 60 s). Depois de gravar (aqui e no comercial),
+  ele roda `supervisor.atualizar_hoje()`: o pacote do dia de cada setor em `supervisor.hoje`, que o app pergunta de
+  15 em 15 s (`/api/hoje`) e põe por cima do pacote da manhã. O botão Atualizar pede a leitura na hora
+  (`/api/atualizar`). Ver `web/db/07-ao-vivo.sql`. A antiga `Supervisor - Pedidos` (30 em 30 min) saiu.
 
 ## Pastas
 

@@ -45,14 +45,19 @@ const diaLongo = d => DIAS[dow(d)] + ', ' + dm(d);
 const nomeMes = d => MESES[dt(d).getUTCMonth()] + '/' + dt(d).getUTCFullYear();
 const hm = iso8601 => { if (!iso8601) return '—'; const x = new Date(iso8601); return p2(x.getHours()) + ':' + p2(x.getMinutes()); };
 const diaHm = iso8601 => { if (!iso8601) return '—'; const x = new Date(iso8601); return p2(x.getDate()) + '/' + p2(x.getMonth() + 1) + ' ' + hm(iso8601); };
+const hms = iso8601 => { if (!iso8601) return '—'; const x = new Date(iso8601); return hm(iso8601) + ':' + p2(x.getSeconds()); };
+const diaHmS = iso8601 => { if (!iso8601) return '—'; const x = new Date(iso8601); return p2(x.getDate()) + '/' + p2(x.getMonth() + 1) + ' ' + hms(iso8601); };
 
 const nf0 = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 0 });
 const nf1 = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 const nf2 = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const brl = v => 'R$ ' + nf0.format(Math.round(v));
-const brl2 = v => 'R$ ' + nf2.format(v);
-const brlK = v => { const a = Math.abs(v); if (a >= 1e6) return 'R$ ' + nf2.format(v / 1e6) + ' mi'; if (a >= 1e4) return 'R$ ' + nf1.format(v / 1e3) + ' mil'; return brl(v); };
-const pct = (v, d) => (d === 0 ? nf0 : nf1).format((isFinite(v) ? v : 0) * 100) + '%';
+// 1.7 (Júlio, 2026-10-29): "os números do painel não podem ter arredondamento, precisam ser completos": todo valor em
+// reais sai com centavos ("R$ 1.777.174,99", não "R$ 1,78 mi") e toda porcentagem com 2 casas (a margem, com 4: pctM).
+// Os nomes antigos ficam (brlK, o 2º argumento do pct) para não mexer em cada tela; o encaixar() faz o número caber.
+const brl = v => 'R$ ' + nf2.format(isFinite(v) ? v : 0);
+const brl2 = brl;
+const brlK = brl;
+const pct = v => nf2.format((isFinite(v) ? v : 0) * 100) + '%';
 /* MARGEM com 4 casas, como o Central Comercial mostra o % líquido (1.6) */
 const nf4 = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 4, maximumFractionDigits: 4 });
 const pctM = v => nf4.format((isFinite(v) ? v : 0) * 100) + '%';
@@ -110,28 +115,34 @@ const IDB = (() => {
 })();
 
 /* ---------------- dados ---------------- */
+// as linhas do pacote viram objetos aqui; o pacote da manhã e o pacote do dia (ao vivo, 1.7) usam as mesmas funções.
+// 1.6 (Júlio, 2026-10-29): FATURADO = o "total líquido" do Central Comercial (venda − devolução com ST) e MARGEM =
+// o "% líquido" (massa de margem ÷ total líquido sem ST). A devolução vem em linha própria, na data dela e com o
+// pedido original. vb é a venda antes da devolução: conta positivação, pedidos, ticket e compras do cliente.
+// Pacote de antes da 1.6 (sem [6]): o faturado volta a ser a venda.
+const linhaNf = r => {
+  const vb = +r[4] || 0, novo = r[6] != null;
+  return { d: r[0], ped: r[1], cli: r[2], rca: r[3], vb, vl: novo ? +r[6] || 0 : vb,
+           ls: novo ? +r[7] || 0 : vb, ms: novo ? +r[8] || 0 : vb - (+r[5] || 0) };
+};
+const linhaPed = r => ({ d: r[0], min: r[1], num: r[2], cli: r[3], rca: r[4], vl: +r[5] || 0, pos: r[6], ori: r[7], dfat: r[8] });
+const linhaTit = r => ({ cli: r[0], rca: r[1], dup: r[2], prest: r[3], venc: r[4], valor: +r[5] || 0, cob: r[6], grupo: r[7], fil: r[8], emis: r[9] });
+const linhaDev = r => ({ d: r[0], cli: r[1], rca: r[2], nota: r[3], mot: r[4], v: +r[5] || 0 });
+const linhaCli = r => ({ cod: r[0], fantasia: titulo(r[1] || r[2]) || ('Cliente ' + r[0]), razao: r[2] || '', cnpj: r[3], ramo: r[4], cidade: r[5] || '', bairro: r[6] || '', end: r[7] || '', fone: r[8], cel: r[9], rca: r[10], plano: r[11], prazo: r[12], limite: +r[13] || 0, bloq: !!r[14], ult: r[15], cad: r[16], sup: r[17] });
 function montar(p) {
   const d = {
     tipo: (p.escopo && p.escopo.tipo) || 'setor', codusur: p.escopo && p.escopo.codusur,
     setor: p.setor || { cod: null, nome: '' }, hoje: p.hoje, ini: p.ini, cargas: p.cargas || {}, gerado: p.gerado_em,
     rcas: (p.rcas || []).map(r => ({ cod: r[0], nome: titulo(r[1]), ativo: !!r[2] })),
-    // 1.6 (Júlio, 2026-10-29): FATURADO = o "total líquido" do Central Comercial (venda − devolução com ST) e MARGEM =
-    // o "% líquido" (massa de margem ÷ total líquido sem ST). A devolução vem em linha própria, na data dela e com o
-    // pedido original. vb é a venda antes da devolução: conta positivação, pedidos, ticket e compras do cliente.
-    // Pacote de antes da 1.6 (sem [6]): o faturado volta a ser a venda.
-    nf: (p.nf || []).map(r => {
-      const vb = +r[4] || 0, novo = r[6] != null;
-      return { d: r[0], ped: r[1], cli: r[2], rca: r[3], vb, vl: novo ? +r[6] || 0 : vb,
-               ls: novo ? +r[7] || 0 : vb, ms: novo ? +r[8] || 0 : vb - (+r[5] || 0) };
-    }),
-    ped: (p.ped || []).map(r => ({ d: r[0], min: r[1], num: r[2], cli: r[3], rca: r[4], vl: +r[5] || 0, pos: r[6], ori: r[7], dfat: r[8] })),
-    tit: (p.tit || []).map(r => ({ cli: r[0], rca: r[1], dup: r[2], prest: r[3], venc: r[4], valor: +r[5] || 0, cob: r[6], grupo: r[7], fil: r[8], emis: r[9] })),
+    nf: (p.nf || []).map(linhaNf),
+    ped: (p.ped || []).map(linhaPed),
+    tit: (p.tit || []).map(linhaTit),
     item: (p.item || []).map(r => ({ mes: r[0], cli: r[1], p: r[2], rca: r[3], q: +r[4] || 0, v: +r[5] || 0, c: +r[6] || 0, ult: r[7], n: r[8] || 0 })),
-    dev: (p.dev || []).map(r => ({ d: r[0], cli: r[1], rca: r[2], nota: r[3], mot: r[4], v: +r[5] || 0 })),
+    dev: (p.dev || []).map(linhaDev),
     prod: p.prod || {}, forn: p.forn || {}, mot: p.mot || {}, cob: p.cob || {},
     // meta da região por dia útil (1.5); null = pacote de antes da meta (a cópia guardada no aparelho)
     meta: p.meta ? p.meta.map(r => ({ d: r[0], v: +r[1] || 0 })) : null,
-    cli: (p.cli || []).map(r => ({ cod: r[0], fantasia: titulo(r[1] || r[2]) || ('Cliente ' + r[0]), razao: r[2] || '', cnpj: r[3], ramo: r[4], cidade: r[5] || '', bairro: r[6] || '', end: r[7] || '', fone: r[8], cel: r[9], rca: r[10], plano: r[11], prazo: r[12], limite: +r[13] || 0, bloq: !!r[14], ult: r[15], cad: r[16], sup: r[17] })),
+    cli: (p.cli || []).map(linhaCli),
   };
   d.RMAP = new Map(d.rcas.map(r => [r.cod, r]));
   // telas e filtros mostram só RCA ativo (Júlio, 2026-10-22); o inativo segue no pacote para o total da região
@@ -139,6 +150,8 @@ function montar(p) {
   d.ativos = d.rcas.filter(r => r.ativo);
   d.CMAP = new Map(d.cli.map(c => [c.cod, c]));
   if (d.tipo === 'rca' && d.rcas[0]) d.rcaNome = d.rcas[0].nome;
+  // pacote da manhã recarregado: o do dia (ao vivo) que já chegou volta por cima
+  if (VIVO.hoje && VIVO.escopo === S.escopo) { aplicarHoje(d, VIVO.hoje, VIVO.versao); aplicarVivo(d); }
   return d;
 }
 const rcaNome = cod => { const r = D && D.RMAP.get(cod); return r ? r.nome : (cod ? 'RCA ' + cod : '—'); };
@@ -221,7 +234,7 @@ const IC2 = {
 const ic = (n, cls) => `<svg class="ic${cls ? ' ' + cls : ''}" viewBox="0 0 24 24" aria-hidden="true">${IC2[n] || KIC[n] || ''}</svg>`;
 const kpi = (l, v, d, cls) => {
   const icn = KIC[KMAP[l] || (l.startsWith('Classe') ? 'layers' : 'cash')];
-  const zero = /^(R\$ )?0(%)?$/.test(String(v).replace(/<[^>]+>/g, '')) ? ' zero' : '';
+  const zero = /^(R\$ )?0(,0+)?%?$/.test(String(v).replace(/<[^>]+>/g, '')) ? ' zero' : '';
   return `<div class="kpi ${cls || ''}${zero}"><span class="l"><svg viewBox="0 0 24 24" aria-hidden="true">${icn}</svg><span>${l}</span></span><span class="v">${v}</span>${d ? `<span class="d">${d}</span>` : ''}</div>`;
 };
 const bar = (frac, cls) => `<div class="bar ${cls || ''}"><i style="width:${Math.max(0, Math.min(100, (frac || 0) * 100)).toFixed(1)}%"></i></div>`;
@@ -242,7 +255,8 @@ function graficoDias(d1, d2, fonte, rca, destaque) {
   if (dias.length < 2) return '';
   const idx = new Map(dias.map((d, i) => [d, i])), vals = dias.map(() => 0);
   for (const o of (fonte === 'dig' ? D.ped : D.nf)) { if (rca && o.rca !== rca) continue; const i = idx.get(o.d); if (i !== undefined) vals[i] += o.vl; }
-  const max = Math.max(1, ...vals), W = 400, H = 130, T = 22, B = 18, bw = W / dias.length, rotulos = dias.length <= 8;
+  // valor completo sobre a barra só com até 4 dias (com mais, não cabe: o valor de cada dia fica no toque na barra)
+  const max = Math.max(1, ...vals), W = 400, H = 130, T = 22, B = 18, bw = W / dias.length, rotulos = dias.length <= 4;
   let r = `<svg class="ch" viewBox="0 0 ${W} ${H}" role="img" aria-label="Venda ${fonte === 'dig' ? 'digitada' : 'faturada'} por dia">`;
   r += `<line class="g" x1="0" x2="${W}" y1="${T}" y2="${T}"/><line class="g" x1="0" x2="${W}" y1="${H - B}" y2="${H - B}"/>`;
   if (!rotulos) r += `<text x="0" y="${T - 6}">${brlK(max)}</text>`;
@@ -282,15 +296,18 @@ function metaDoMes(m0, H, fat) {
   if (!total) return { sem: true };
   return { total, ate, dias, fat, falta: total - fat, st: situacaoMeta(fat, total, ate) };
 }
-function blocoMeta(mt) {
-  const fr = mt.fat / mt.total, batida = mt.falta <= 0;
-  const falta = batida ? `<b>${brlK(-mt.falta)}</b> acima da meta`
-    : mt.dias ? `faltam <b>${brlK(mt.falta)}</b> · <b>${brlK(mt.falta / mt.dias)}</b> por dia útil`
-    : `faltaram <b>${brlK(mt.falta)}</b>`;
+/* 1.7 (Júlio: valores completos, "sem ficar aquele monte de informação"): a barra e uma grade 2 × 2 com o essencial */
+function blocoMeta(mt, margem) {
+  const fr = mt.fat / mt.total, batida = mt.falta <= 0, esperado = mt.ate / mt.total;
+  const quarto = batida || !mt.dias ? ['Esperado até ontem', pct(esperado)] : ['Por dia útil', brl(mt.falta / mt.dias)];
   // a marca do ritmo só ajuda enquanto a meta não foi batida
-  return `<span class="meta-barra${batida ? ' batida' : ''}" style="--fr:${Math.min(1, fr).toFixed(4)};--ritmo:${Math.min(1, mt.ate / mt.total).toFixed(4)}" role="img" aria-label="${pct(fr, 0)} da meta${batida ? '' : '; o esperado até ontem era ' + pct(mt.ate / mt.total, 0)}"><i></i>${batida ? '' : '<b></b>'}</span>
-      <span class="meta-leg"><span><b>${pct(fr, 0)}</b> da meta${batida ? '' : ` · esperado até ontem ${pct(mt.ate / mt.total, 0)}`}</span><span class="pill ${mt.st[0]}">${mt.st[1]}</span></span>
-      <span class="meta-falta">${falta}</span>`;
+  return `<span class="meta-barra${batida ? ' batida' : ''}" style="--fr:${Math.min(1, fr).toFixed(4)};--ritmo:${Math.min(1, esperado).toFixed(4)}" role="img" aria-label="${pct(fr)} da meta${batida ? '' : '; o esperado até ontem era ' + pct(esperado)}"><i></i>${batida ? '' : '<b></b>'}</span>
+      <span class="meta-grade">
+        <span><small>Da meta</small><b>${pct(fr)}</b></span>
+        <span><small>Margem</small><b>${pctM(margem)}</b></span>
+        <span><small>${batida ? 'Acima da meta' : mt.dias ? 'Faltam' : 'Faltaram'}</small><b>${brl(Math.abs(mt.falta))}</b></span>
+        <span><small>${quarto[0]}</small><b>${quarto[1]}</b></span>
+      </span>`;
 }
 /* o gestor vê, no mesmo cartão, a soma de todas as regiões (do resumo dos setores) */
 function metaTodas(m0) {
@@ -300,7 +317,7 @@ function metaTodas(m0) {
   for (const s of R.setores) { fat += s.venda[i0] || 0; if (s.meta) { total += +s.meta[i0] || 0; ate += +s.metaAte[i0] || 0; } }
   if (!total) return '';
   const st = situacaoMeta(fat, total, ate);
-  return `<span class="meta-todas"><span>Todas as regiões</span><span><b>${brlK(fat)}</b> de ${brlK(total).replace('R$ ', '')} <span class="pill ${st[0]}">${pct(fat / total, 0)}</span></span></span>`;
+  return `<span class="meta-todas"><span class="mt-l">Todas as regiões <span class="pill ${st[0]}">${pct(fat / total)}</span></span><span class="mt-v"><b>${brl(fat)}</b> de ${brl(total)}</span></span>`;
 }
 
 /* ---------------- aba: resumo (o dia numa tela só) ---------------- */
@@ -345,9 +362,9 @@ function vResumo() {
     </button>
     ${comMeta ? `<button type="button" class="mes-card com-meta" data-a="ir" data-v="vendas:periodo">
       <span class="cartao-rot">${ic('cash')}Meta de ${nomeM} <small>${mt.dias ? `${mt.dias} ${mt.dias === 1 ? 'dia útil' : 'dias úteis'} com hoje` : 'mês fechado'}</small>${ic('frente', 'seta')}</span>
-      <span class="linha-valor"><span class="valor-grande" data-cnt="${mes.vl}" data-f="brlK">${brlK(mes.vl)}</span><span class="meta-de">de ${brlK(mt.total)}</span></span>
-      ${blocoMeta(mt)}
-      <span class="sub"><span class="nw">Margem <b>${pctM(mes.mg)}</b></span> · ${comparacao}</span>
+      <span class="valor-grande" data-cnt="${mes.vl}" data-f="brlK">${brlK(mes.vl)}</span>
+      <span class="meta-linha"><span class="meta-de">meta ${brl(mt.total)}</span><span class="pill ${mt.st[0]}">${mt.st[1]}</span></span>
+      ${blocoMeta(mt, mes.mg)}
       ${metaTodas(m0)}
     </button>` : `<button type="button" class="mes-card" data-a="ir" data-v="vendas:periodo">
       <span class="cartao-rot">${ic('cash')}Faturado em ${nomeM} <small>até ${dm(H)}</small>${ic('frente', 'seta')}</span>
@@ -360,7 +377,7 @@ function vResumo() {
     <div class="tiles">
       <button type="button" class="tile ouro" data-a="ir" data-v="carteira:pos">${anel(fp)}<span class="cartao-rot">${ic('users')}Carteira</span><span class="v" data-cnt="${fp}" data-f="pct0">${pct(fp, 0)}</span><span class="d">${nf0.format(pos)} de ${nf0.format(cart.length)} compraram no mês</span></button>
       <button type="button" class="tile perigo" data-a="ir" data-v="inad:resumo"><span class="cartao-rot">${ic('alert')}Vencido</span><span class="v" data-cnt="${vt}" data-f="brlK">${brlK(vt)}</span><span class="d">${nf0.format(vc)} ${vc === 1 ? 'cliente' : 'clientes'} com título vencido</span></button>
-      <button type="button" class="tile atencao" data-a="ir" data-v="dev:resumo"><span class="cartao-rot">${ic('ret')}Devolução</span><span class="v">${pct(mes.vl ? devM / mes.vl : 0)}</span><span class="d">${brlK(devM)} devolvidos no mês</span></button>
+      <button type="button" class="tile atencao" data-a="ir" data-v="dev:resumo"><span class="cartao-rot">${ic('ret')}Devolução</span><span class="v">${pct(mes.vb ? devM / mes.vb : 0)}</span><span class="d">${brlK(devM)} devolvidos no mês</span></button>
       <button type="button" class="tile" data-a="ir" data-v="abc:cli"><span class="cartao-rot">${ic('layers')}Maior cliente</span><span class="v txt">${lider ? esc(cliNome(lider[0])) : '—'}</span><span class="d">${lider ? brlK(lider[1]) + ' · ' + nA + ' ' + (nA === 1 ? 'cliente' : 'clientes') + ' na classe A' : 'sem venda no mês'}</span></button>
     </div>
   </div>`;
@@ -1006,7 +1023,7 @@ function montarTela() {
   if (!it) {
     const t = TABS.find(x => x[0] === S.tab) || TABS[0];
     if (!D) return { chave: t[0], titulo: t[1], raiz: true, html: ESQ };
-    const base = S.escopo + '|' + D.gerado;
+    const base = S.escopo + '|' + D.gerado + '|' + (D.hv || '');   // hv: a versão do pacote do dia (ao vivo, 1.7)
     if (memo.base !== base) { memo.base = base; memo.m.clear(); }
     const k = chaveMemo();
     if (k && memo.m.has(k)) return memo.m.get(k);
@@ -1043,6 +1060,13 @@ function setorHtml() {
 }
 function whenHtml() {
   if (!D) return '';
+  const v = VIVO.vivo;
+  // 1.7: com o agente ligado, "Ao vivo" e a hora da última leitura do WinThor
+  if (v && v.agente && !offline) {
+    const lido = [v.pedido, v.faturado].filter(Boolean).sort().pop();
+    const tv = 'Ao vivo: o agente lê o WinThor de segundos em segundos. Pedidos lidos às ' + diaHmS(v.pedido) + '; faturado às ' + diaHmS(v.faturado) + '. Toque para ler agora.';
+    return `<button type="button" class="when vivo" id="when" title="${esc(tv)}">Ao vivo · ${hms(lido)}</button>`;
+  }
   const ped = D.cargas.pedido, fat = D.cargas.faturado;
   const velho = ped && (Date.now() - new Date(ped).getTime() > 3 * 3600e3);
   const tit = 'Pedidos digitados até ' + diaHm(ped) + '; venda faturada até ' + diaHm(fat) + '; títulos ' + diaHm(D.cargas.titulo) + '. Toque para atualizar.';
@@ -1126,7 +1150,22 @@ function entrar(view) {
   view.classList.add('entrando');
   clearTimeout(view._ent); view._ent = setTimeout(() => view.classList.remove('entrando'), 1100);
 }
-const FMT = { brlK, n: v => nf0.format(Math.round(v)), pct0: v => pct(v, 0) };
+const FMT = { brlK, n: v => nf0.format(Math.round(v)), pct0: v => pct(v) };
+/* o número inteiro sempre à vista (1.7): sem "…" e sem arredondar; se não couber, a fonte só daquele número diminui.
+   Mede tudo antes e escreve depois (uma medida só para a tela inteira, sem a tela se recalcular a cada número). */
+const SEL_ENCAIXE = '.valor-grande, .kpi .v, .tile .v:not(.txt), .trio b, .meta-grade b, .meta-de, .meta-todas .mt-v';
+function encaixar(raiz) {
+  const els = [...(raiz || document).querySelectorAll(SEL_ENCAIXE)];
+  for (const el of els) el.style.fontSize = '';
+  const medidas = els.map(el => {
+    const pai = el.parentElement, cp = getComputedStyle(pai);
+    const livre = Math.min(el.clientWidth || 1e9, pai.clientWidth - parseFloat(cp.paddingLeft) - parseFloat(cp.paddingRight));
+    return [el, livre, el.scrollWidth, parseFloat(getComputedStyle(el).fontSize)];
+  });
+  for (const [el, livre, precisa, fs] of medidas) {
+    if (livre > 0 && precisa > livre + 0.5) el.style.fontSize = Math.max(10, Math.floor(fs * livre / precisa * 10) / 10) + 'px';
+  }
+}
 function contar(raiz) {
   if (REDUZ) return;
   raiz.querySelectorAll('[data-cnt]').forEach(el => {
@@ -1161,6 +1200,7 @@ function render(o) {
     if (sg) { const novo = sg.style.getPropertyValue('--i'); sg.style.setProperty('--i', segAnt); void sg.offsetWidth; sg.style.setProperty('--i', novo); }
   }
   if (rolos.length) view.querySelectorAll('.pilulas, .chips.rola').forEach((x, i) => { if (rolos[i]) x.scrollLeft = rolos[i]; });
+  encaixar(view);
   if (o.rolar != null) window.scrollTo(0, o.rolar); else if (o.topo) window.scrollTo(0, 0);
   dockAtualizar();
   if (anim) animar(anim, g);
@@ -1389,6 +1429,109 @@ async function abrirEscopo(escopo, aoMontar) {
     return false;
   }
 }
+/* ---------------- ao vivo (1.7, Júlio: "o app precisa atualizar toda vez que tiver alguma mudança") ----------------
+   O AGENTE LUBE lê o WinThor de segundos em segundos e, depois de gravar, monta o PACOTE DO DIA de cada setor (pedidos,
+   notas e devoluções de ontem e hoje + os títulos em aberto) e o resumo do gestor. O app pergunta de 15 em 15 s, só
+   com a tela à vista (/api/hoje, com a versão que já tem: sem mudança a resposta é minúscula), e põe o pacote do dia
+   por cima do pacote da manhã (carga das 06:20): de ontem em diante vale o do dia; os títulos vêm inteiros dele. */
+const VIVO = { escopo: '', versao: '', hoje: null, resumo: null, vivo: null, pendente: false, ocupado: false, timer: null };
+function aplicarHoje(d, h, versao) {
+  if (!d || !h || h.ini == null) return;
+  const ini = h.ini, iniNf = h.ini_nf != null ? h.ini_nf : h.ini;
+  // as notas vêm do mês inteiro (o comercial corrige nota antiga de 15 em 15 min); pedidos e devoluções, de ontem em diante
+  d.nf = d.nf.filter(o => o.d < iniNf).concat((h.nf || []).map(linhaNf));
+  d.ped = d.ped.filter(o => o.d < ini).concat((h.ped || []).map(linhaPed));
+  d.dev = d.dev.filter(o => o.d < ini).concat((h.dev || []).map(linhaDev));
+  if (h.tit) d.tit = h.tit.map(linhaTit);
+  Object.assign(d.cob, h.cob || {}); Object.assign(d.mot, h.mot || {});
+  for (const r of h.cli || []) {
+    const c = linhaCli(r), velho = d.CMAP.get(c.cod);
+    if (velho) Object.assign(velho, c); else { d.cli.push(c); d.CMAP.set(c.cod, c); }
+  }
+  // de madrugada o pacote da manhã ainda é o de ontem: o dia que vale é o do pacote do dia
+  if (h.hoje > d.hoje) d.hoje = h.hoje;
+  d.hv = versao || '';
+}
+/* com o agente ligado, a hora de cada dado é a da última leitura do WinThor (e não a da carga da manhã) */
+function aplicarVivo(d) {
+  const v = VIVO.vivo;
+  if (!d || !v || !v.agente) return;
+  for (const k of ['pedido', 'faturado', 'titulo', 'devolucao']) if (v[k]) d.cargas[k] = v[k];
+}
+/* a tela se refaz sozinha, sem animação e no mesmo lugar; com alguém digitando ou com a folha aberta, espera */
+function redesenharAoVivo() {
+  const foco = document.activeElement;
+  if ((foco && /^(INPUT|SELECT|TEXTAREA)$/.test(foco.tagName)) || !$('#folha').hidden || $('#view').classList.contains('em-anim')) { VIVO.pendente = true; return; }
+  VIVO.pendente = false;
+  render({ rolar: window.scrollY });
+}
+async function buscarHoje(pedidos) {
+  if (!conta || !S.escopo || !D) return null;
+  const t = await A.token();
+  if (!t) return null;
+  const escopo = S.escopo;
+  if (VIVO.escopo !== escopo) { VIVO.escopo = escopo; VIVO.versao = ''; VIVO.hoje = null; }
+  const h = { Authorization: 'Bearer ' + t }; if (VIVO.versao) h['X-Versao'] = VIVO.versao;
+  const qs = [escopo[0] === 'S' ? 'escopo=' + escopo : '', pedidos && pedidos.length ? 'pedidos=' + pedidos.join(',') : ''].filter(Boolean).join('&');
+  const r = await fetch((CFG.api || '') + '/api/hoje' + (qs ? '?' + qs : ''), { headers: h, cache: 'no-store' });
+  if (!r.ok) return null;
+  const j = await r.json();
+  if (!j || j.semHoje || S.escopo !== escopo) return j;
+  const antes = JSON.stringify(VIVO.vivo);
+  VIVO.vivo = j.vivo || null;
+  let mudou = false;
+  if (!j.igual && (j.setor || j.resumo)) {
+    VIVO.versao = j.versao;
+    if (j.setor) { VIVO.hoje = j.setor; if (D) { aplicarHoje(D, j.setor, j.versao); mudou = true; } }
+    if (j.resumo && ehGerente()) { VIVO.resumo = j.resumo; R = montarResumo(j.resumo); mudou = true; }
+  }
+  if (D) aplicarVivo(D);
+  if (mudou || VIVO.pendente) redesenharAoVivo();
+  else if (antes !== JSON.stringify(VIVO.vivo)) { const w = $('#when'); if (w) w.outerHTML = whenHtml(); }   // só a hora do indicador
+  return j;
+}
+function aoVivoLigar() {
+  clearInterval(VIVO.timer);
+  VIVO.timer = setInterval(() => {
+    if (document.visibilityState !== 'visible' || !conta || !D || baixando || VIVO.ocupado) return;
+    buscarHoje().catch(() => { /* sem rede agora: tenta de novo daqui a 15 s */ });
+  }, 15e3);
+}
+const esperar = ms => new Promise(ok => setTimeout(ok, ms));
+/* "Atualizar dados", puxar para baixo e o toque no indicador: pede ao agente uma leitura do WinThor AGORA (a ponte do
+   painel do Inventário); sem o agente ligado, confere a carga como antes */
+async function atualizarAgora() {
+  if (VIVO.ocupado) return;
+  VIVO.ocupado = true; S.mudou = false;
+  try {
+    const t = await A.token();
+    if (!t) return;
+    let j = null;
+    try {
+      const r = await fetch((CFG.api || '') + '/api/atualizar', { method: 'POST', headers: { Authorization: 'Bearer ' + t }, cache: 'no-store' });
+      j = r.ok ? await r.json() : null;
+    } catch (e) { j = null; }
+    if (!j || !j.agente) {
+      toast((j && j.mensagem ? j.mensagem + ' ' : '') + 'Conferindo se há dados novos…');
+      await carregarTudo();
+      return;
+    }
+    toast('Lendo o WinThor agora…');
+    const t0 = Date.now();
+    let fim = null;
+    while (Date.now() - t0 < 25e3) {
+      await esperar(1200);
+      const h = await buscarHoje(j.pedidos).catch(() => null);
+      const ps = (h && h.pedidos) || [];
+      if (ps.length && ps.every(p => p.status !== 'pendente' && p.status !== 'atendendo')) { fim = ps; break; }
+    }
+    const sup = fim && fim.find(p => p.sistema === 'supervisor');
+    if (sup && sup.status === 'atendido') toast('WinThor lido agora' + (sup.segundos != null ? ' (' + String(sup.segundos).replace('.', ',') + ' s)' : '') + ': dados em dia.');
+    else toast(fim ? 'O agente não conseguiu ler o WinThor agora. Mostrando o último dado.' : 'O agente está demorando: o dado novo aparece sozinho em instantes.', !!fim);
+    await carregarTudo();   // e o pacote da manhã, se mudou
+  } finally { VIVO.ocupado = false; }
+}
+
 function montarResumo(p) {
   // 1.6: venda = o FATURADO (total líquido, [11]); vendaBruta = a venda antes da devolução ([2]); margem = massa [13] ÷
   // total líquido sem ST [12]. Resumo de antes da 1.6 (sem [11]): tudo volta à venda e ao custo de antes.
@@ -1402,7 +1545,8 @@ async function carregarTudo() {
   if (baixando) return; baixando = true; ultimaConferencia = Date.now();
   try {
     if (ehGerente()) {
-      await abrirEscopo('G', p => { R = montarResumo(p); if (D) render(); });
+      // o resumo do dia (ao vivo) vale sobre o da manhã quando é mais novo
+      await abrirEscopo('G', p => { R = montarResumo(VIVO.resumo && String(VIVO.resumo.gerado_em || '') > String(p.gerado_em || '') ? VIVO.resumo : p); if (D) render(); });
       if (!R || !R.setores.length) throw new Error('O resumo dos setores ainda não está pronto.');
       let alvo = null;
       try { alvo = Number(localStorage.getItem('sup-lube-setor')); } catch (e) { /* ignora */ }
@@ -1417,6 +1561,8 @@ async function carregarTudo() {
   } catch (e) {
     if (!D) $('#view').innerHTML = `<div class="msg bad">${esc(e.message || 'Não consegui carregar os dados.')}</div><button class="btn sec" type="button" data-a="m-atualizar">Tentar de novo</button>`;
   } finally { baixando = false; }
+  // ao vivo (1.7): o pacote do dia por cima, já agora, e a pergunta de 15 em 15 s
+  if (D) { buscarHoje().catch(() => { /* sem o ao vivo agora: fica o pacote da manhã */ }); if (!VIVO.timer) aoVivoLigar(); }
 }
 async function abrirSetor(cod) {
   const escopo = 'S' + cod;
@@ -1429,7 +1575,8 @@ function trocarSetor(cod) {
   S.pilha = []; S.rolagens = [];
   if (baixando) return;
   baixando = true;
-  abrirSetor(cod).catch(e => toast(e.message || 'Não consegui abrir o setor.', true)).finally(() => { baixando = false; });
+  abrirSetor(cod).catch(e => toast(e.message || 'Não consegui abrir o setor.', true))
+    .finally(() => { baixando = false; buscarHoje().catch(() => { /* o pacote do dia do setor novo vem na próxima pergunta */ }); });
 }
 
 /* ---------------- eventos ---------------- */
@@ -1437,7 +1584,7 @@ document.addEventListener('click', e => {
   if (e.target.closest('#veu')) { fecharFolha(); return; }
   if (e.target.closest('#conta-btn')) { abrirMenu(); return; }
   if (e.target.closest('#btn-busca')) { if (D) empurrar({ t: 'busca', titulo: 'Clientes' }); return; }
-  if (e.target.closest('#when')) { if (!baixando) { toast('Conferindo se há dados novos…'); carregarTudo(); } return; }
+  if (e.target.closest('#when')) { if (!baixando) atualizarAgora(); return; }
   const pf = e.target.closest('#folha [data-perfil]'); if (pf) { escolherPerfil(pf.dataset.perfil); return; }
   const b = e.target.closest('[data-a]'); if (!b) return;
   const a = b.dataset.a, v = b.dataset.v;
@@ -1467,7 +1614,7 @@ document.addEventListener('click', e => {
     case 'novo-sup': abrirCadastro(v || null); return;
     case 'fechar-folha': fecharFolha(); return;
     case 'copiar-convite': copiar(); return;
-    case 'm-atualizar': fecharFolha(); toast('Conferindo se há dados novos…'); carregarTudo(); return;
+    case 'm-atualizar': fecharFolha(); if (D) atualizarAgora(); else { toast('Conferindo se há dados novos…'); carregarTudo(); } return;
     case 'm-acessos': fecharFolha(); S.adm.erro = ''; empurrar({ t: 'adm', titulo: 'Acessos' }); if (!S.adm.dados) carregarAcessos(); return;
     case 'm-instalar': fecharFolha(); if (instalar) { instalar.prompt(); instalar = null; } return;
     case 'm-sair': fecharFolha(); IDB.limpar(); D = null; R = null; conta = null; S.escopo = null; S.pilha = []; S.adm.dados = null; A.sair(); return;
@@ -1624,9 +1771,9 @@ function puxaSoltar(dy) {
   if (!REDUZ) view.animate([{ transform: `translateY(${d}px)` }, { transform: 'translateY(54px)' }], { duration: 260, easing: EASE });
   p.style.transform = 'translateY(19px)'; p.style.opacity = 1; p.classList.add('gira');
   const t0 = Date.now(); S.mudou = false;
-  Promise.resolve(carregarTudo()).finally(() => setTimeout(() => {
+  // 1.7: puxar pede ao agente uma leitura do WinThor agora (a mensagem do resultado sai de lá)
+  Promise.resolve(D ? atualizarAgora() : carregarTudo()).finally(() => setTimeout(() => {
     solta(54);
-    if (!S.mudou && !offline) toast('Tudo em dia: os dados já são os mais novos.');
   }, Math.max(0, 700 - (Date.now() - t0))));   // gira pelo menos 0,7 s (senão parece que não fez nada)
 }
 /* arrastar a folha para baixo fecha (pela alça ou com a folha no topo) */
@@ -1657,7 +1804,11 @@ function puxaSoltar(dy) {
 
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && conta && Date.now() - ultimaConferencia > 5 * 60e3) carregarTudo();
+  else if (document.visibilityState === 'visible' && conta && D) buscarHoje().catch(() => { /* tenta de novo em 15 s */ });
 });
+// a fonte dos números chega depois da primeira tela e a largura muda ao girar: o encaixe mede de novo
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => encaixar($('#view')));
+window.addEventListener('resize', () => { clearTimeout(encaixar._t); encaixar._t = setTimeout(() => encaixar($('#view')), 150); });
 window.addEventListener('online', () => { if (conta && offline) carregarTudo(); });
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); instalar = e; });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') { if (!$('#folha').hidden) fecharFolha(); else if (S.pilha.length) voltar(); } });

@@ -14,9 +14,9 @@
 # Como rodar (uma vez so, NA VM SRV-IA):
 #   abra P:\INTEGRACAO BI\SUPERVISOR e de duplo clique em "INSTALAR TUDO.bat"
 #
-# E o mesmo instalador do FISCAL, com duas tarefas: a de pedidos (pedido digitado +
-# pacotes, ~20 s) de 30 em 30 minutos e a completa (cliente, titulos, venda por item,
-# conferencias e pacotes, ~1 min) 4 vezes ao dia.
+# E o mesmo instalador do FISCAL. Desde 2026-10-29 cria so a tarefa completa (cliente,
+# titulos, venda por item, meta, conferencias e pacotes, ~1 min) as 06:20 e apaga a antiga de
+# pedidos (30 em 30 min): o AGENTE LUBE le pedidos e titulos de segundos em segundos.
 #
 # QUAL CONTA VAI RODAR A TAREFA
 # O script roda em duas partes: a primeira na sua janela normal, a segunda numa
@@ -372,27 +372,24 @@ try {
     }
 
     # --- criar as tarefas de verdade, no modo que passou ---------------------
-    # Pedidos: de 30 em 30 minutos, das 07:00 as 22:00, aos :00 e :30 (o pedido digitado e a
-    # "venda do dia" do app; o RCA digita ate a noite). Completa: 06:20, 11:20, 15:20 e 18:20.
-    # Minutos escolhidos para nao coincidir com outro ETL: INVENTARIO :05, FISCAL :10/:40,
-    # TRADE :25, REPOSICOES :35, COMERCIAL :45, COMPRAS :50. A tranca do banco impede duas
-    # cargas do Supervisor ao mesmo tempo; se uma atrasar, a seguinte e pulada (IgnoreNew).
-    $horariosPedidos = @()
-    for ($m = 7 * 60; $m -le 22 * 60; $m += 30) {
-        $horariosPedidos += ("{0:D2}:{1:D2}" -f [int][math]::Floor($m / 60), ($m % 60))
-    }
-    $horariosCompleto = @("06:20", "11:20", "15:20", "18:20")
+    # Desde 2026-10-29 (app 1.7, decisao do Julio): o AGENTE LUBE le os pedidos e os titulos de
+    # segundos em segundos e monta o pacote do dia do app; a tarefa de pedidos de 30 em 30 minutos
+    # SAIU e a completa (cliente, venda por item, meta, conferencias e o pacote grande do app) roda
+    # so as 06:20, como o Inventario (07:05) e o Trade (06:25). Minuto escolhido para nao coincidir
+    # com outro ETL: INVENTARIO :05, FISCAL :10/:40, TRADE :25, REPOSICOES :35, COMERCIAL :45,
+    # COMPRAS :50.
+    $horariosCompleto = @("06:20")
 
     Write-Host ""
     Write-Host "Criando as tarefas no modo que passou..."
 
-    Registrar -Nome $NOME_PEDIDOS -Argumento ('"' + $bootstrap + '" --grupo pedidos') `
-        -Horarios $horariosPedidos -Modo $modoBom.nome `
-        -Descricao "Supervisor Lube: pedido digitado (PCPEDC) e pacotes do app, de 30 em 30 minutos."
-    Write-Host "  [ok] $NOME_PEDIDOS" -ForegroundColor Green
+    if (Get-ScheduledTask -TaskName $NOME_PEDIDOS -ErrorAction SilentlyContinue) {
+        Unregister-ScheduledTask -TaskName $NOME_PEDIDOS -Confirm:$false
+        Write-Host "  [ok] $NOME_PEDIDOS removida (o agente le os pedidos agora)" -ForegroundColor Green
+    }
     Registrar -Nome $NOME_COMPLETO -Argumento ('"' + $bootstrap + '" --grupo completo') `
         -Horarios $horariosCompleto -Modo $modoBom.nome `
-        -Descricao "Supervisor Lube: cliente, titulos, venda por item, conferencias e pacotes do app."
+        -Descricao "Supervisor Lube: cliente, titulos, venda por item, meta, conferencias e pacotes do app (06:20; o resto do dia e o AGENTE LUBE)."
     Write-Host "  [ok] $NOME_COMPLETO" -ForegroundColor Green
 
     # --- carga de teste de verdade -----------------------------------------
@@ -447,7 +444,7 @@ try {
     Write-Host "================================================================" -ForegroundColor Cyan
     Write-Host "  conta que executa   : $Usuario"
     Write-Host "  modo                : $($modoBom.texto)"
-    Write-Host "  pedidos (30 em 30)  : $($horariosPedidos -join ', ')"
+    Write-Host "  pedidos e titulos   : AGENTE LUBE, de segundos em segundos (sem tarefa)"
     Write-Host "  completa            : $($horariosCompleto -join ', ')"
     Write-Host "  pasta de execucao   : $Destino"
     Write-Host "================================================================" -ForegroundColor Cyan

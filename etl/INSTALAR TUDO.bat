@@ -1,7 +1,7 @@
 @echo off
 rem ===========================================================================
 rem  Instala o SUPERVISOR LUBE na maquina e cria as tarefas agendadas
-rem  "Supervisor - Pedidos" (30 em 30 min) e "Supervisor - Completo" (4x ao dia).
+rem  "Supervisor - Completo" (so as 06:20; o resto do dia e o AGENTE LUBE) e apaga a antiga "Supervisor - Pedidos".
 rem
 rem  Rode NA VM SRV-IA, de duplo clique. Ele pede administrador no meio do
 rem  caminho - isso e esperado, e para criar a tarefa no Agendador.

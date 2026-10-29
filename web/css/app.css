@@ -21,7 +21,7 @@
   --app-solid: #08122b; --press: rgba(255, 255, 255, .07); --thumb: #1f3366;
   --f-display: "Archivo", "Segoe UI", system-ui, sans-serif;
   --f-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
-  --f-num: "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
+  --f-num: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;   /* 1.7: o zero da JetBrains Mono tem ponto e parecia um 8 (Júlio) */
   /* movimento: a curva das telas do iPhone e uma mola com um leve passar do ponto */
   --ios: cubic-bezier(.32, .72, 0, 1); --mola: cubic-bezier(.34, 1.36, .5, 1);
   /* Painel Lube (shell.css do portal) */
@@ -66,6 +66,9 @@
 
 * { box-sizing: border-box; }
 html, body { margin: 0; min-height: 100%; }
+/* números com algarismos de largura igual em todo lugar (1.7, como no Gestão Fiscal): o atalho "font:" das regras
+   zera o font-variant-numeric, por isso o !important */
+*, *::before, *::after { font-variant-numeric: tabular-nums !important; }
 /* o brilho do fundo fica numa camada fixa própria: "background-attachment: fixed" obrigava o celular a redesenhar a
    tela inteira a cada passo da rolagem (1.4) */
 body { background: var(--bg); color: var(--ink); font: 500 15px/1.45 var(--f-body); -webkit-font-smoothing: antialiased;
@@ -136,6 +139,10 @@ button { cursor: pointer; }
 .when::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--good); box-shadow: 0 0 10px var(--good); }
 .when.velho::before { background: var(--warn); box-shadow: 0 0 10px var(--warn); }
 .when.off::before { background: var(--muted); box-shadow: none; }
+/* ao vivo (1.7): o ponto pulsa enquanto o agente lê o WinThor */
+.when.vivo { color: var(--good); font-weight: 600; }
+@media (prefers-reduced-motion: no-preference) { .when.vivo::before { animation: pulso-vivo 2s ease-in-out infinite; } }
+@keyframes pulso-vivo { 50% { opacity: .35; box-shadow: 0 0 2px var(--good); } }
 
 /* Conteúdo (o espaço de baixo é da barra flutuante) */
 main { flex: 1; position: relative; padding-block: 2px calc(108px + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; gap: 14px; min-width: 0; }
@@ -287,12 +294,17 @@ button.row:active { background: var(--press); transition: none; }
 .meta-barra > i { position: absolute; left: 0; top: 0; bottom: 0; width: calc(var(--fr) * 100%); border-radius: 5px; background: linear-gradient(90deg, var(--accent), var(--gold)); }
 .meta-barra.batida > i { background: linear-gradient(90deg, var(--good), var(--gold)); }
 .meta-barra > b { position: absolute; top: -3px; bottom: -3px; left: calc(var(--ritmo) * 100%); width: 2px; margin-left: -1px; border-radius: 1px; background: var(--ink); opacity: .6; }
-.meta-leg { display: flex; justify-content: space-between; align-items: center; gap: 4px 10px; flex-wrap: wrap; font: 600 11.5px var(--f-body); color: var(--muted); }
-.meta-leg b, .meta-falta b { font: 800 12px var(--f-num); color: var(--ink); }
-.meta-leg .pill { margin-left: auto; }
-.meta-falta { font: 600 11.5px var(--f-body); color: var(--muted); }
-.meta-todas { display: flex; justify-content: space-between; align-items: center; gap: 4px 10px; flex-wrap: wrap; border-top: 1px solid var(--line); padding-top: 7px; margin-top: 3px; font: 600 11.5px var(--f-body); color: var(--muted); }
-.meta-todas > span:last-child { margin-left: auto; font: 600 11.5px var(--f-num); white-space: nowrap; }
+/* 1.7: valores completos (sem "mi"/"mil") em menos linhas: meta e situação numa linha, uma grade 2 × 2 embaixo */
+.meta-linha { display: flex; justify-content: space-between; align-items: center; gap: 4px 10px; flex-wrap: wrap; }
+.meta-linha .meta-de { font: 600 13px var(--f-num); letter-spacing: 0; }
+.meta-grade { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 14px; border-top: 1px solid var(--line); padding-top: 8px; margin-top: 2px; }
+.meta-grade > span { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.meta-grade small { font: 700 9.5px var(--f-body); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.meta-grade b { font: 700 15px var(--f-num); letter-spacing: -.01em; white-space: nowrap; overflow: hidden; }
+.meta-todas { display: flex; flex-direction: column; gap: 3px; border-top: 1px solid var(--line); padding-top: 7px; margin-top: 3px; }
+.meta-todas .mt-l { display: flex; justify-content: space-between; align-items: center; gap: 8px; font: 700 9.5px var(--f-body); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.meta-todas .mt-l .pill { letter-spacing: .02em; text-transform: none; }
+.meta-todas .mt-v { font: 600 12.5px var(--f-num); color: var(--muted); white-space: nowrap; overflow: hidden; }
 .meta-todas b { color: var(--ink); }
 .meta-sem { font: 600 11.5px var(--f-body); color: var(--muted); }
 /* "margem 21,0356%" quebra inteiro para a linha de baixo, nunca no meio (1.6, margem com 4 casas) */
