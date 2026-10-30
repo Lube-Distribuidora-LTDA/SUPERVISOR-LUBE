@@ -15,6 +15,9 @@
 -- (troca da conta dentro das funções de 06-total-liquido.sql e 07-ao-vivo.sql, que ficam como o estado anterior). Depois:
 --   update supervisor.hoje set marca = null; select supervisor.atualizar_hoje();   -- remonta o pacote do dia
 --   python sync_supervisor.py --so-pacote                                          -- remonta os pacotes do setor
+-- No mesmo dia, junto com a correção da aba ST do Central Comercial (somas sem corte), o faturado, o total sem ST e a
+-- massa de cada linha passaram de 4 para 6 casas (migração `supervisor_v7_faturado_6_casas`): com 4, a soma da região
+-- caía na borda do meio centavo em 4 de 71 meses de região. Com 6 é exata (a origem tem no máximo 6 casas).
 -- Este arquivo é o estado final (as funções lidas do banco).
 
 CREATE OR REPLACE FUNCTION supervisor.pacote_setor(p_sup integer)
@@ -92,7 +95,7 @@ select json_build_object(
   'nf', coalesce((select json_agg(json_build_array(dtmov - date '1970-01-01', numped, codcli, codusur,
                                                    round(venda, 4), round(cmv, 4),
                                                    -- [6] FATURADO = total liquido da aba ST (venda - devolucao sem ST, desde 2026-10-30), [7] o mesmo total (denominador do % liquido), [8] massa de margem
-                                                   round(tl, 4), round(tls, 4), round(massa, 4)) order by dtmov, numped) from nf), '[]'),
+                                                   round(tl, 6), round(tls, 6), round(massa, 6)) order by dtmov, numped) from nf), '[]'),
   'ped', coalesce((select json_agg(json_build_array(data - date '1970-01-01', coalesce(hora, 0) * 60 + coalesce(minuto, 0),
                                                     numped, codcli, codusur, round(vltotal, 4), posicao, origem,
                                                     dtfat - date '1970-01-01') order by data, numped) from ped), '[]'),
@@ -184,9 +187,9 @@ select json_build_object(
        (select json_agg(round(coalesce(x.v, 0), 2) order by m.mes) from meses m left join meta x on x.cod = s.cod and x.mes = m.mes),
        (select json_agg(round(coalesce(x.ate_ontem, 0), 2) order by m.mes) from meses m left join meta x on x.cod = s.cod and x.mes = m.mes),
        -- [11] FATURADO = total liquido da aba ST (venda - devolucao sem ST, desde 2026-10-30), [12] o mesmo total e [13] massa de margem, alinhados com "meses"
-       (select json_agg(round(coalesce(v.tl, 0), 4) order by m.mes) from meses m left join venda v on v.cod = s.cod and v.mes = m.mes),
-       (select json_agg(round(coalesce(v.tls, 0), 4) order by m.mes) from meses m left join venda v on v.cod = s.cod and v.mes = m.mes),
-       (select json_agg(round(coalesce(v.massa, 0), 4) order by m.mes) from meses m left join venda v on v.cod = s.cod and v.mes = m.mes)
+       (select json_agg(round(coalesce(v.tl, 0), 6) order by m.mes) from meses m left join venda v on v.cod = s.cod and v.mes = m.mes),
+       (select json_agg(round(coalesce(v.tls, 0), 6) order by m.mes) from meses m left join venda v on v.cod = s.cod and v.mes = m.mes),
+       (select json_agg(round(coalesce(v.massa, 0), 6) order by m.mes) from meses m left join venda v on v.cod = s.cod and v.mes = m.mes)
      ) order by s.nome)
      from setores s left join tit t on t.cod = s.cod), '[]')
 );
@@ -236,7 +239,7 @@ select json_build_object(
   'ini',  (select ini  - date '1970-01-01' from par),
   'ini_nf', (select ini_nf - date '1970-01-01' from par),
   'nf', coalesce((select json_agg(json_build_array(dtmov - date '1970-01-01', numped, codcli, codusur,
-                                                   round(venda, 4), round(cmv, 4), round(tl, 4), round(tls, 4), round(massa, 4))
+                                                   round(venda, 4), round(cmv, 4), round(tl, 6), round(tls, 6), round(massa, 6))
                                   order by dtmov, numped) from nf), '[]'),
   'ped', coalesce((select json_agg(json_build_array(data - date '1970-01-01', coalesce(hora, 0) * 60 + coalesce(minuto, 0),
                                                     numped, codcli, codusur, round(vltotal, 4), posicao, origem,
