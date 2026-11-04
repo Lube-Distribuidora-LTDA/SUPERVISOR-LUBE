@@ -39,7 +39,8 @@ function filtrarRca(p, codusur) {
 const SQL = `
 WITH b AS (SELECT max(visto_em) AS visto, bool_or(ligado) AS ligado FROM agente.batimento
             WHERE visto_em > now() - interval '3 minutes'),
-     e AS (SELECT max(lido_em) FILTER (WHERE fluxo = 'supervisor.pedido')     AS pedido,
+     -- 1.8: o digitado vem do pedido da 146 (relatorio146.pedido), não mais do supervisor.pedido
+     e AS (SELECT max(lido_em) FILTER (WHERE fluxo = 'relatorio146.pedido')   AS pedido,
                   max(lido_em) FILTER (WHERE fluxo = 'comercial.comissao_nf') AS faturado,
                   max(lido_em) FILTER (WHERE fluxo = 'supervisor.titulo')     AS titulo,
                   max(lido_em) FILTER (WHERE fluxo = 'comercial.devolucao')   AS devolucao

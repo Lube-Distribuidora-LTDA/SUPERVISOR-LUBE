@@ -116,16 +116,19 @@ const IDB = (() => {
 
 /* ---------------- dados ---------------- */
 // as linhas do pacote viram objetos aqui; o pacote da manhã e o pacote do dia (ao vivo, 1.7) usam as mesmas funções.
-// 1.6 (Júlio, 2026-10-29): FATURADO = o "total líquido" do Central Comercial (venda − devolução com ST) e MARGEM =
-// o "% líquido" (massa de margem ÷ total líquido sem ST). A devolução vem em linha própria, na data dela e com o
-// pedido original. vb é a venda antes da devolução: conta positivação, pedidos, ticket e compras do cliente.
+// FATURADO = o TOTAL LIQUIDO da aba ST do Central Comercial (venda − devolução sem ST; Júlio, 2026-10-30; até ali era a
+// devolução com ST) e MARGEM = o "% líquido" (massa de margem ÷ esse total). A devolução vem em linha própria, na data
+// dela e com o pedido original. vb é a venda antes da devolução: conta positivação, pedidos, ticket e compras do cliente.
 // Pacote de antes da 1.6 (sem [6]): o faturado volta a ser a venda.
+// DIGITADO = a venda do Relatório 146 (Júlio, 2026-11-04: "faturamento real"): o banco manda os pedidos da própria
+// tabela da 146, e [9] é o custo líquido dela; a margem do dia é (venda − custo) ÷ venda, como o "% lucro" da 146.
 const linhaNf = r => {
   const vb = +r[4] || 0, novo = r[6] != null;
   return { d: r[0], ped: r[1], cli: r[2], rca: r[3], vb, vl: novo ? +r[6] || 0 : vb,
            ls: novo ? +r[7] || 0 : vb, ms: novo ? +r[8] || 0 : vb - (+r[5] || 0) };
 };
-const linhaPed = r => ({ d: r[0], min: r[1], num: r[2], cli: r[3], rca: r[4], vl: +r[5] || 0, pos: r[6], ori: r[7], dfat: r[8] });
+const linhaPed = r => ({ d: r[0], min: r[1], num: r[2], cli: r[3], rca: r[4], vl: +r[5] || 0, pos: r[6], ori: r[7], dfat: r[8],
+                         cu: r[9] != null ? +r[9] : null });
 const linhaTit = r => ({ cli: r[0], rca: r[1], dup: r[2], prest: r[3], venc: r[4], valor: +r[5] || 0, cob: r[6], grupo: r[7], fil: r[8], emis: r[9] });
 const linhaDev = r => ({ d: r[0], cli: r[1], rca: r[2], nota: r[3], mot: r[4], v: +r[5] || 0 });
 const linhaCli = r => ({ cod: r[0], fantasia: titulo(r[1] || r[2]) || ('Cliente ' + r[0]), razao: r[2] || '', cnpj: r[3], ramo: r[4], cidade: r[5] || '', bairro: r[6] || '', end: r[7] || '', fone: r[8], cel: r[9], rca: r[10], plano: r[11], prazo: r[12], limite: +r[13] || 0, bloq: !!r[14], ult: r[15], cad: r[16], sup: r[17] });
@@ -173,9 +176,10 @@ function resumoNf(list) {
   return { vl, vb, ms, mg: ls ? ms / ls : 0, ped: pd.size, pos: cl.size, tk: pd.size ? vb / pd.size : 0 };
 }
 function resumoPed(list) {
-  let vl = 0; const cl = new Set();
-  for (const o of list) { vl += o.vl; cl.add(o.cli); }
-  return { vl, ped: list.length, pos: cl.size, tk: list.length ? vl / list.length : 0 };
+  // lucro só dos pedidos com custo, sobre a venda de todos (a conta da 146); pacote sem custo = sem margem (null)
+  let vl = 0, lu = 0, comCusto = 0; const cl = new Set();
+  for (const o of list) { vl += o.vl; cl.add(o.cli); if (o.cu != null) { lu += o.vl - o.cu; comCusto++; } }
+  return { vl, lu, mg: comCusto && vl ? lu / vl : null, ped: list.length, pos: cl.size, tk: list.length ? vl / list.length : 0 };
 }
 function periodo(chave) {
   const H = D.hoje, m0 = mesDe(H);
@@ -220,7 +224,7 @@ const KIC = {
   repeat: '<path d="M17 3l3 3-3 3"/><path d="M4 12V9a3 3 0 0 1 3-3h13M7 21l-3-3 3-3"/><path d="M20 12v3a3 3 0 0 1-3 3H4"/>',
   truck: '<path d="M3 6h11v10H3zM14 9h4l3 3v4h-7"/><circle cx="7" cy="18" r="1.6"/><circle cx="17" cy="18" r="1.6"/>',
 };
-const KMAP = { 'Venda': 'cash', 'Digitado': 'cart', 'Faturado': 'truck', 'Positivação': 'users', 'Pedidos': 'receipt', 'Ticket médio': 'receipt', 'Margem': 'percent', 'Vencido': 'alert', 'Títulos': 'doc', 'Clientes': 'users', 'Bloqueados': 'lock', 'A vencer': 'cal', 'Devolvido': 'ret', 'Devoluções': 'ret', 'Resp. do RCA': 'user', 'Prazo': 'cal', 'Limite de crédito': 'shield', 'Limite': 'shield', 'Em aberto': 'doc', 'Disponível': 'wallet', 'Última': 'cal', 'Frequência': 'repeat' };
+const KMAP = { 'Venda': 'cash', 'Digitado': 'cart', 'Margem do dia': 'percent', 'Faturado': 'truck', 'Positivação': 'users', 'Pedidos': 'receipt', 'Ticket médio': 'receipt', 'Margem': 'percent', 'Vencido': 'alert', 'Títulos': 'doc', 'Clientes': 'users', 'Bloqueados': 'lock', 'A vencer': 'cal', 'Devolvido': 'ret', 'Devoluções': 'ret', 'Resp. do RCA': 'user', 'Prazo': 'cal', 'Limite de crédito': 'shield', 'Limite': 'shield', 'Em aberto': 'doc', 'Disponível': 'wallet', 'Última': 'cal', 'Frequência': 'repeat' };
 const IC2 = {
   back: '<path d="M15 4.5 7.5 12l7.5 7.5"/>',
   frente: '<path d="m9 5 7 7-7 7"/>',
@@ -351,7 +355,7 @@ function vResumo() {
   <div class="resumo">
     <button type="button" class="hoje-card" data-a="ir" data-v="vendas:hoje">
       <span class="cartao-rot">${ic('cart')}Digitado hoje <small>até ${hm(D.cargas.pedido)}</small>${ic('frente', 'seta')}</span>
-      <span class="valor-grande" data-cnt="${hj.vl}" data-f="brlK">${brlK(hj.vl)}</span>
+      <span class="linha-valor"><span class="valor-grande" data-cnt="${hj.vl}" data-f="brlK">${brlK(hj.vl)}</span>${hj.mg != null ? `<span class="pill ${hj.mg < .12 ? 'warn' : ''}">Margem do dia ${pctM(hj.mg)}</span>` : ''}</span>
       <span class="sub">${dl != null ? delta(dl, 'vs. ' + diaLongo(H - 7)) : 'sem pedido em ' + diaLongo(H - 7) + ' para comparar'}</span>
       <span class="trio">
         <span><small>Faturado</small><b data-cnt="${fh.vl}" data-f="brlK">${brlK(fh.vl)}</b></span>
@@ -404,7 +408,7 @@ function vVendas() {
     return `
     <div class="pilulas">${pilRca('v-rca', rca)}${pilData('v-dia', 'Dia', V.dia)}</div>
     <div class="h">Venda do dia <small>${diaLongo(V.dia)}${parcial}</small></div>
-    <div class="kpis k2">${kpi('Digitado', brlK(pd.vl), dTxt, 'hero')}${kpi('Faturado', brlK(fd.vl), fd.vb ? 'Margem ' + pctM(fd.mg) : 'notas do dia')}${kpi('Pedidos', nf0.format(pd.ped), 'digitados')}${kpi('Positivação', nf0.format(pd.pos), 'clientes com pedido')}${kpi('Ticket médio', brlK(pd.tk), 'por pedido')}</div>
+    <div class="kpis k2">${kpi('Digitado', brlK(pd.vl), dTxt, 'hero')}${kpi('Margem do dia', pd.mg != null ? pctM(pd.mg) : '—', pd.mg != null ? brlK(pd.lu) + ' de lucro no digitado' : 'sem pedido no dia', 'linha' + (pd.mg != null && pd.mg < .12 ? ' atencao' : ''))}${kpi('Faturado', brlK(fd.vl), fd.vb ? 'Margem ' + pctM(fd.mg) : 'notas do dia')}${kpi('Pedidos', nf0.format(pd.ped), 'digitados')}${kpi('Positivação', nf0.format(pd.pos), 'clientes com pedido')}${kpi('Ticket médio', brlK(pd.tk), 'por pedido')}</div>
     ${sem ? `<button type="button" class="faixa toque" data-a="pag" data-v="rcas">${sem} ${sem > 1 ? 'RCAs ativos ainda sem pedido' : 'RCA ativo ainda sem pedido'} hoje${ic('frente', 'seta')}</button>` : ''}`;
   };
   const periodoPag = () => {

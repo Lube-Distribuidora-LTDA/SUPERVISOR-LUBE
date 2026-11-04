@@ -212,6 +212,7 @@ main { flex: 1; position: relative; padding-block: 2px calc(108px + env(safe-are
 .kpi.hero .v { font-size: 30px; background: linear-gradient(180deg, var(--gold-strong), var(--gold)); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .kpi.wide { grid-column: 1 / -1; }
 .kpi.wide .v { font-size: 30px; }
+.kpi.linha { grid-column: 1 / -1; }   /* 1.8: a margem do dia ocupa a linha toda, logo abaixo do digitado */
 .kpi.perigo .v { color: var(--bad); }
 .kpi.perigo { --cor-brilho: rgba(255, 107, 116, .22); --cor-ic: var(--bad); }
 .kpi.atencao { --cor-brilho: rgba(255, 179, 64, .2); --cor-ic: var(--warn); }

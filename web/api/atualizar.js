@@ -6,9 +6,10 @@
  * NOTIFY; o agente, na SRV-IA, lê na hora, monta o pacote do dia e responde no pedido. Nenhuma porta aberta
  * na rede da Lube, e o app nunca chega no Oracle.
  *
- * Dois pedidos: o do supervisor (pedidos e títulos) e o do comercial (o faturado e a devolução do app vêm de
- * lá). O app acompanha os dois por /api/hoje?pedidos=<ids>. Com o agente fora do ar (batimento com mais de
- * 3 minutos), nada é pedido e a resposta diz isso: o app confere a carga como antes.
+ * Três pedidos: o do supervisor (títulos), o do comercial (o faturado e a devolução do app vêm de lá) e, desde a
+ * 1.8 (2026-11-04), o do relatorio146 (o digitado do app é o pedido da 146). O app acompanha todos por
+ * /api/hoje?pedidos=<ids>. Com o agente fora do ar (batimento com mais de 3 minutos), nada é pedido e a resposta
+ * diz isso: o app confere a carga como antes.
  */
 "use strict";
 const { consultar, json, semConfiguracao, erroBanco } = require("./_db.js");
@@ -33,7 +34,8 @@ module.exports = async (req, res) => {
                      WHERE visto_em > now() - interval '3 minutes')
          SELECT a.visto, coalesce(a.ligado, false) AS ligado,
                 CASE WHEN a.visto IS NOT NULL AND a.ligado THEN agente.pedir_atualizacao('supervisor', 'app supervisor-lube') END AS p1,
-                CASE WHEN a.visto IS NOT NULL AND a.ligado THEN agente.pedir_atualizacao('comercial', 'app supervisor-lube') END AS p2
+                CASE WHEN a.visto IS NOT NULL AND a.ligado THEN agente.pedir_atualizacao('comercial', 'app supervisor-lube') END AS p2,
+                CASE WHEN a.visto IS NOT NULL AND a.ligado THEN agente.pedir_atualizacao('relatorio146', 'app supervisor-lube') END AS p3
            FROM a`, []);
     } catch (e) {
       if (e && (e.code === "42P01" || e.code === "3F000" || e.code === "42883")) {
@@ -46,7 +48,7 @@ module.exports = async (req, res) => {
       return json(res, 200, { agente: false, visto_em: l.visto || null,
         mensagem: l.visto ? "O agente do WinThor está em pausa." : "O agente do WinThor não está ligado agora." });
     }
-    return json(res, 200, { agente: true, pedidos: [Number(l.p1), Number(l.p2)].filter(Boolean) });
+    return json(res, 200, { agente: true, pedidos: [Number(l.p1), Number(l.p2), Number(l.p3)].filter(Boolean) });
   } catch (e) {
     return erroBanco(res, e);
   }
