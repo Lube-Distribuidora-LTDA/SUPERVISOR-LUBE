@@ -121,17 +121,19 @@ const IDB = (() => {
 // dela e com o pedido original. vb é a venda antes da devolução: conta positivação, pedidos, ticket e compras do cliente.
 // Pacote de antes da 1.6 (sem [6]): o faturado volta a ser a venda.
 // DIGITADO = a venda do Relatório 146 (Júlio, 2026-11-04: "faturamento real"): o banco manda os pedidos da própria
-// tabela da 146, e [9] é o custo líquido dela; a margem do dia é (venda − custo) ÷ venda, como o "% lucro" da 146.
+// tabela da 146 ([9] é o custo líquido dela; a margem do dia da 1.8 saiu na 1.9: "deixe apenas no período").
+// DEVOLUÇÃO = a da aba Devoluções do Central Comercial (valor com ST), desde 2026-11-04, no banco.
 const linhaNf = r => {
   const vb = +r[4] || 0, novo = r[6] != null;
   return { d: r[0], ped: r[1], cli: r[2], rca: r[3], vb, vl: novo ? +r[6] || 0 : vb,
            ls: novo ? +r[7] || 0 : vb, ms: novo ? +r[8] || 0 : vb - (+r[5] || 0) };
 };
-const linhaPed = r => ({ d: r[0], min: r[1], num: r[2], cli: r[3], rca: r[4], vl: +r[5] || 0, pos: r[6], ori: r[7], dfat: r[8],
-                         cu: r[9] != null ? +r[9] : null });
+const linhaPed = r => ({ d: r[0], min: r[1], num: r[2], cli: r[3], rca: r[4], vl: +r[5] || 0, pos: r[6], ori: r[7], dfat: r[8] });
 const linhaTit = r => ({ cli: r[0], rca: r[1], dup: r[2], prest: r[3], venc: r[4], valor: +r[5] || 0, cob: r[6], grupo: r[7], fil: r[8], emis: r[9] });
 const linhaDev = r => ({ d: r[0], cli: r[1], rca: r[2], nota: r[3], mot: r[4], v: +r[5] || 0 });
-const linhaCli = r => ({ cod: r[0], fantasia: titulo(r[1] || r[2]) || ('Cliente ' + r[0]), razao: r[2] || '', cnpj: r[3], ramo: r[4], cidade: r[5] || '', bairro: r[6] || '', end: r[7] || '', fone: r[8], cel: r[9], rca: r[10], plano: r[11], prazo: r[12], limite: +r[13] || 0, bloq: !!r[14], ult: r[15], cad: r[16], sup: r[17] });
+// 1.9: [18] RCA 1, [19] RCA 2 e [20] cadastro do Relatório 146 (relatorio146.cliente): a carteira da 146
+const linhaCli = r => ({ cod: r[0], fantasia: titulo(r[1] || r[2]) || ('Cliente ' + r[0]), razao: r[2] || '', cnpj: r[3], ramo: r[4], cidade: r[5] || '', bairro: r[6] || '', end: r[7] || '', fone: r[8], cel: r[9], rca: r[10], plano: r[11], prazo: r[12], limite: +r[13] || 0, bloq: !!r[14], ult: r[15], cad: r[16], sup: r[17],
+                         rca1: r[18], rca2: r[19], cad146: r[20] });
 function montar(p) {
   const d = {
     tipo: (p.escopo && p.escopo.tipo) || 'setor', codusur: p.escopo && p.escopo.codusur,
@@ -152,9 +154,16 @@ function montar(p) {
   // fechar (título antigo, venda do mês) e aparece só numa linha de aviso
   d.ativos = d.rcas.filter(r => r.ativo);
   d.CMAP = new Map(d.cli.map(c => [c.cod, c]));
+  // 1.9: todos os RCAs do supervisor (a carteira da 146 conta o RCA 1 ou 2 de qualquer um deles); sem a lista é pacote antigo
+  d.tem146 = Array.isArray(p.rcas_sup);
+  d.rcasSup = new Set(p.rcas_sup || []);
   if (d.tipo === 'rca' && d.rcas[0]) d.rcaNome = d.rcas[0].nome;
-  // pacote da manhã recarregado: o do dia (ao vivo) que já chegou volta por cima
-  if (VIVO.hoje && VIVO.escopo === S.escopo) { aplicarHoje(d, VIVO.hoje, VIVO.versao); aplicarVivo(d); }
+  // pacote da manhã recarregado: a janela e o pacote do dia (ao vivo) que já chegaram voltam por cima, nessa ordem
+  if (VIVO.escopo === S.escopo) {
+    if (VIVO.janela) aplicarJanela(d, VIVO.janela);
+    if (VIVO.hoje) aplicarHoje(d, VIVO.hoje, VIVO.versao);
+    if (VIVO.janela || VIVO.hoje) aplicarVivo(d);
+  }
   return d;
 }
 const rcaNome = cod => { const r = D && D.RMAP.get(cod); return r ? r.nome : (cod ? 'RCA ' + cod : '—'); };
@@ -169,6 +178,17 @@ const ehRca = () => D && D.tipo === 'rca';
 const ehGerente = () => conta && conta.tipo === 'gerente';
 const naCarteira = c => ehRca() ? c.rca === D.codusur : c.sup === D.setor.cod;
 const carteiraAtiva = c => (c.ult != null && c.ult >= D.hoje - 180) || (c.cad != null && c.cad >= D.hoje - 90);
+/* 1.9 (Júlio, 2026-11-04: "sempre precisam ser os mesmos números" da 146): a CARTEIRA é a do Relatório 146, o "Total
+   cadastrado": cliente com um RCA do setor (ou o RCA filtrado) como RCA 1 ou RCA 2, cadastrado ANTES do fim do período
+   (quem entrou no último dia fica de fora, como na 146). POSITIVADO é cliente com pedido no período (o "Positivados" da
+   146, de dentro ou de fora da carteira). Pacote de antes da 1.9 (sem a carteira da 146): a carteira ativa de antes. */
+function daCarteira(c, fim, rca) {
+  if (!D.tem146) return (rca ? c.rca === rca : naCarteira(c)) && carteiraAtiva(c);
+  const r = rca || (ehRca() ? D.codusur : 0);
+  const dele = r ? (c.rca1 === r || c.rca2 === r) : (D.rcasSup.has(c.rca1) || D.rcasSup.has(c.rca2));
+  return dele && (c.cad146 == null || c.cad146 < fim);
+}
+const positivados = (d1, d2, rca) => new Set(D.ped.filter(o => o.d >= d1 && o.d <= d2 && (!rca || o.rca === rca)).map(o => o.cli));
 
 function resumoNf(list) {
   let vl = 0, vb = 0, ls = 0, ms = 0; const cl = new Set(), pd = new Set();
@@ -176,10 +196,10 @@ function resumoNf(list) {
   return { vl, vb, ms, mg: ls ? ms / ls : 0, ped: pd.size, pos: cl.size, tk: pd.size ? vb / pd.size : 0 };
 }
 function resumoPed(list) {
-  // lucro só dos pedidos com custo, sobre a venda de todos (a conta da 146); pacote sem custo = sem margem (null)
-  let vl = 0, lu = 0, comCusto = 0; const cl = new Set();
-  for (const o of list) { vl += o.vl; cl.add(o.cli); if (o.cu != null) { lu += o.vl - o.cu; comCusto++; } }
-  return { vl, lu, mg: comCusto && vl ? lu / vl : null, ped: list.length, pos: cl.size, tk: list.length ? vl / list.length : 0 };
+  // pedidos = todos os da 146 (bonificação conta, com valor zero), positivação = clientes distintos, ticket = venda ÷ pedidos
+  let vl = 0; const cl = new Set();
+  for (const o of list) { vl += o.vl; cl.add(o.cli); }
+  return { vl, ped: list.length, pos: cl.size, tk: list.length ? vl / list.length : 0 };
 }
 function periodo(chave) {
   const H = D.hoje, m0 = mesDe(H);
@@ -224,7 +244,7 @@ const KIC = {
   repeat: '<path d="M17 3l3 3-3 3"/><path d="M4 12V9a3 3 0 0 1 3-3h13M7 21l-3-3 3-3"/><path d="M20 12v3a3 3 0 0 1-3 3H4"/>',
   truck: '<path d="M3 6h11v10H3zM14 9h4l3 3v4h-7"/><circle cx="7" cy="18" r="1.6"/><circle cx="17" cy="18" r="1.6"/>',
 };
-const KMAP = { 'Venda': 'cash', 'Digitado': 'cart', 'Margem do dia': 'percent', 'Faturado': 'truck', 'Positivação': 'users', 'Pedidos': 'receipt', 'Ticket médio': 'receipt', 'Margem': 'percent', 'Vencido': 'alert', 'Títulos': 'doc', 'Clientes': 'users', 'Bloqueados': 'lock', 'A vencer': 'cal', 'Devolvido': 'ret', 'Devoluções': 'ret', 'Resp. do RCA': 'user', 'Prazo': 'cal', 'Limite de crédito': 'shield', 'Limite': 'shield', 'Em aberto': 'doc', 'Disponível': 'wallet', 'Última': 'cal', 'Frequência': 'repeat' };
+const KMAP = { 'Venda': 'cash', 'Digitado': 'cart', 'Faturado': 'truck', 'Positivação': 'users', 'Pedidos': 'receipt', 'Ticket médio': 'receipt', 'Margem': 'percent', 'Vencido': 'alert', 'Títulos': 'doc', 'Clientes': 'users', 'Bloqueados': 'lock', 'A vencer': 'cal', 'Devolvido': 'ret', 'Devoluções': 'ret', 'Resp. do RCA': 'user', 'Prazo': 'cal', 'Limite de crédito': 'shield', 'Limite': 'shield', 'Em aberto': 'doc', 'Disponível': 'wallet', 'Última': 'cal', 'Frequência': 'repeat' };
 const IC2 = {
   back: '<path d="M15 4.5 7.5 12l7.5 7.5"/>',
   frente: '<path d="m9 5 7 7-7 7"/>',
@@ -335,9 +355,9 @@ function vResumo() {
   const a0 = mesSeg(m0, -1), a1 = Math.min(m0 - 1, a0 + (H - m0));
   const mAnt = a0 >= D.ini ? resumoNf(D.nf.filter(o => o.d >= a0 && o.d <= a1)) : null;
   const dMes = mAnt && mAnt.vl ? mes.vl / mAnt.vl - 1 : null;
-  const cart = D.cli.filter(c => naCarteira(c) && carteiraAtiva(c));
-  const comprou = new Set(); for (const o of D.nf) if (o.d >= m0 && o.vb > 0) comprou.add(o.cli);
-  const pos = cart.filter(c => comprou.has(c.cod)).length, fp = cart.length ? pos / cart.length : 0;
+  // carteira e positivados do mês como na 146 (Total cadastrado e Positivados)
+  const cart = D.cli.filter(c => daCarteira(c, H, 0));
+  const pos = positivados(m0, H, 0).size, fp = cart.length ? pos / cart.length : 0;
   const venc = D.tit.filter(t => t.grupo === 'cobranca' && t.venc < H), vt = soma(venc, t => t.valor), vc = new Set(venc.map(t => t.cli)).size;
   const devM = soma(D.dev.filter(x => x.d >= m0 && x.d <= H), x => x.v);
   const pf = new Map(); let totI = 0;
@@ -355,7 +375,7 @@ function vResumo() {
   <div class="resumo">
     <button type="button" class="hoje-card" data-a="ir" data-v="vendas:hoje">
       <span class="cartao-rot">${ic('cart')}Digitado hoje <small>até ${hm(D.cargas.pedido)}</small>${ic('frente', 'seta')}</span>
-      <span class="linha-valor"><span class="valor-grande" data-cnt="${hj.vl}" data-f="brlK">${brlK(hj.vl)}</span>${hj.mg != null ? `<span class="pill ${hj.mg < .12 ? 'warn' : ''}">Margem do dia ${pctM(hj.mg)}</span>` : ''}</span>
+      <span class="valor-grande" data-cnt="${hj.vl}" data-f="brlK">${brlK(hj.vl)}</span>
       <span class="sub">${dl != null ? delta(dl, 'vs. ' + diaLongo(H - 7)) : 'sem pedido em ' + diaLongo(H - 7) + ' para comparar'}</span>
       <span class="trio">
         <span><small>Faturado</small><b data-cnt="${fh.vl}" data-f="brlK">${brlK(fh.vl)}</b></span>
@@ -379,7 +399,7 @@ function vResumo() {
       ${metaTodas(m0)}
     </button>`}
     <div class="tiles">
-      <button type="button" class="tile ouro" data-a="ir" data-v="carteira:pos">${anel(fp)}<span class="cartao-rot">${ic('users')}Carteira</span><span class="v" data-cnt="${fp}" data-f="pct0">${pct(fp, 0)}</span><span class="d">${nf0.format(pos)} de ${nf0.format(cart.length)} compraram no mês</span></button>
+      <button type="button" class="tile ouro" data-a="ir" data-v="carteira:pos">${anel(fp)}<span class="cartao-rot">${ic('users')}Carteira</span><span class="v" data-cnt="${fp}" data-f="pct0">${pct(fp, 0)}</span><span class="d">${nf0.format(pos)} positivados de ${nf0.format(cart.length)} cadastrados</span></button>
       <button type="button" class="tile perigo" data-a="ir" data-v="inad:resumo"><span class="cartao-rot">${ic('alert')}Vencido</span><span class="v" data-cnt="${vt}" data-f="brlK">${brlK(vt)}</span><span class="d">${nf0.format(vc)} ${vc === 1 ? 'cliente' : 'clientes'} com título vencido</span></button>
       <button type="button" class="tile atencao" data-a="ir" data-v="dev:resumo"><span class="cartao-rot">${ic('ret')}Devolução</span><span class="v">${pct(mes.vb ? devM / mes.vb : 0)}</span><span class="d">${brlK(devM)} devolvidos no mês</span></button>
       <button type="button" class="tile" data-a="ir" data-v="abc:cli"><span class="cartao-rot">${ic('layers')}Maior cliente</span><span class="v txt">${lider ? esc(cliNome(lider[0])) : '—'}</span><span class="d">${lider ? brlK(lider[1]) + ' · ' + nA + ' ' + (nA === 1 ? 'cliente' : 'clientes') + ' na classe A' : 'sem venda no mês'}</span></button>
@@ -408,7 +428,7 @@ function vVendas() {
     return `
     <div class="pilulas">${pilRca('v-rca', rca)}${pilData('v-dia', 'Dia', V.dia)}</div>
     <div class="h">Venda do dia <small>${diaLongo(V.dia)}${parcial}</small></div>
-    <div class="kpis k2">${kpi('Digitado', brlK(pd.vl), dTxt, 'hero')}${kpi('Margem do dia', pd.mg != null ? pctM(pd.mg) : '—', pd.mg != null ? brlK(pd.lu) + ' de lucro no digitado' : 'sem pedido no dia', 'linha' + (pd.mg != null && pd.mg < .12 ? ' atencao' : ''))}${kpi('Faturado', brlK(fd.vl), fd.vb ? 'Margem ' + pctM(fd.mg) : 'notas do dia')}${kpi('Pedidos', nf0.format(pd.ped), 'digitados')}${kpi('Positivação', nf0.format(pd.pos), 'clientes com pedido')}${kpi('Ticket médio', brlK(pd.tk), 'por pedido')}</div>
+    <div class="kpis k2">${kpi('Digitado', brlK(pd.vl), dTxt, 'hero')}${kpi('Faturado', brlK(fd.vl), 'notas do dia')}${kpi('Pedidos', nf0.format(pd.ped), 'digitados')}${kpi('Positivação', nf0.format(pd.pos), 'clientes com pedido')}${kpi('Ticket médio', brlK(pd.tk), 'por pedido')}</div>
     ${sem ? `<button type="button" class="faixa toque" data-a="pag" data-v="rcas">${sem} ${sem > 1 ? 'RCAs ativos ainda sem pedido' : 'RCA ativo ainda sem pedido'} hoje${ic('frente', 'seta')}</button>` : ''}`;
   };
   const periodoPag = () => {
@@ -418,7 +438,7 @@ function vVendas() {
     ${chips('v-q', V.q, [['hoje', 'Hoje'], ['semana', 'Semana'], ['mes', 'Mês'], ['ant', 'Mês anterior'], ['3m', '3 meses'], ['', 'Escolher datas']], 'rola')}
     ${V.q === '' ? `<div class="pilulas">${pilData('v-de', 'De', V.de)}${pilData('v-ate', 'Até', V.ate)}</div>` : ''}
     <div class="h">Acumulado <small>${dmy(V.de)} a ${dmy(V.ate)}${rca ? ' · ' + esc(rcaNome(rca)) : ''}</small></div>
-    <div class="kpis k2">${kpi('Faturado', brlK(per.vl), 'venda menos devolução', 'hero')}${kpi('Margem', pctM(per.mg), brlK(per.ms) + ' de massa de margem')}${kpi('Digitado', brlK(pp.vl), nf0.format(pp.ped) + ' pedidos')}${kpi('Positivação', nf0.format(per.pos), 'clientes faturados')}${kpi('Ticket médio', brlK(per.tk), nf0.format(per.ped) + ' pedidos faturados')}</div>
+    <div class="kpis k2">${kpi('Faturado', brlK(per.vl), 'venda menos devolução', 'hero')}${kpi('Margem', pctM(per.mg), brlK(per.ms) + ' de massa de margem')}${kpi('Digitado', brlK(pp.vl), nf0.format(pp.ped) + ' pedidos')}${kpi('Positivação', nf0.format(pp.pos), 'clientes com pedido')}${kpi('Ticket médio', brlK(pp.tk), 'por pedido')}</div>
     ${seg('v-graf', V.graf, [['fat', 'Faturado por dia'], ['dig', 'Digitado por dia']])}
     <div class="card">${graficoDias(V.de, V.ate, V.graf, rca, V.dia) || '<span class="muted">Escolha um período com mais de um dia para ver a venda diária.</span>'}</div>`;
   };
@@ -469,19 +489,19 @@ function vCarteira() {
   if (C.mes == null || !meses.includes(C.mes)) C.mes = m0;
   const d1 = C.mes, d2 = Math.min(H, mesSeg(C.mes, 1) - 1);
   const rca = ehRca() ? D.codusur : C.rca;
-  const cart = D.cli.filter(c => naCarteira(c) && carteiraAtiva(c) && (!rca || c.rca === rca));
+  // 1.9: a carteira e os positivados da 146 (Total cadastrado e Positivados); o valor é a venda do pedido (o digitado)
+  const cart = D.cli.filter(c => daCarteira(c, d2, rca));
   const cartSet = new Set(cart.map(c => c.cod));
   const vendas = new Map();
-  for (const o of D.nf) {
-    // a carteira olha o que o cliente comprou: venda antes da devolução (vb)
-    if (o.d < d1 || o.d > d2 || o.vb <= 0 || (rca && o.rca !== rca)) continue;
-    const x = vendas.get(o.cli) || { vl: 0, n: new Set() }; x.vl += o.vb; x.n.add(o.ped); vendas.set(o.cli, x);
+  for (const o of D.ped) {
+    if (o.d < d1 || o.d > d2 || (rca && o.rca !== rca)) continue;
+    const x = vendas.get(o.cli) || { vl: 0, n: new Set() }; x.vl += o.vl; x.n.add(o.num); vendas.set(o.cli, x);
   }
   const potIni = mesSeg(d1, -3), temPot = potIni >= D.ini;
   const pot = new Map(), ult = new Map();
-  for (const o of D.nf) {
-    if (o.vb <= 0 || (rca && o.rca !== rca)) continue;
-    if (o.d >= potIni && o.d < d1) pot.set(o.cli, (pot.get(o.cli) || 0) + o.vb);
+  for (const o of D.ped) {
+    if (rca && o.rca !== rca) continue;
+    if (o.d >= potIni && o.d < d1) pot.set(o.cli, (pot.get(o.cli) || 0) + o.vl);
     if (o.d <= d2 && (!ult.has(o.cli) || ult.get(o.cli) < o.d)) ult.set(o.cli, o.d);
   }
   const ultima = c => { const u = ult.get(c.cod); return u != null ? u : (c.ult != null && c.ult <= d2 ? c.ult : null); };
@@ -490,8 +510,9 @@ function vCarteira() {
   const cidades = [...new Set(baseTodos.map(c => c.cidade).filter(Boolean))].sort();
   const bairros = C.cid ? [...new Set(baseTodos.filter(c => c.cidade === C.cid).map(c => c.bairro).filter(Boolean))].sort() : [];
   const cartF = cart.filter(noLugar);
-  const pos = cartF.filter(c => vendas.has(c.cod)).length, fr = cartF.length ? pos / cartF.length : 0;
   const comp = baseTodos.filter(c => vendas.has(c.cod) && noLugar(c)).map(c => ({ c, vl: vendas.get(c.cod).vl, n: vendas.get(c.cod).n.size, fora: !cartSet.has(c.cod) })).sort((a, b) => b.vl - a.vl);
+  // positivados = todos os clientes com pedido (de dentro ou de fora da carteira), como a 146
+  const pos = comp.length, fr = cartF.length ? pos / cartF.length : 0;
   const nao = cartF.filter(c => !vendas.has(c.cod)).map(c => ({ c, pot: temPot ? (pot.get(c.cod) || 0) / 3 : null, ult: ultima(c) })).sort((a, b) => (b.pot || 0) - (a.pot || 0) || (b.ult || 0) - (a.ult || 0));
   const fora = comp.filter(x => x.fora).length;
   const chave = C.cid ? 'bairro' : 'cidade', grupos = new Map();
@@ -505,9 +526,9 @@ function vCarteira() {
   </div>`;
   const posPag = () => `
     <div class="card pos-card">${anel(fr)}
-      <div><div class="cartao-rot">Positivação no mês</div><div class="big">${pct(fr, 0)}</div><div class="sub">${nf0.format(pos)} de ${nf0.format(cartF.length)} clientes da carteira compraram</div></div>
+      <div><div class="cartao-rot">Positivação no mês</div><div class="big">${pct(fr, 0)}</div><div class="sub">${nf0.format(pos)} positivados de ${nf0.format(cartF.length)} cadastrados</div></div>
     </div>
-    <span class="nota">Carteira ativa: clientes ${ehRca() ? 'da sua rota' : 'dos RCAs do setor'} com compra nos últimos 180 dias.${fora ? ` Mais ${fora} ${fora > 1 ? 'clientes de fora da carteira compraram' : 'cliente de fora da carteira comprou'}.` : ''}</span>
+    <span class="nota">Como no Relatório 146: carteira = clientes com ${ehRca() ? 'você' : 'um RCA do setor'} como RCA 1 ou 2, cadastrados até o fim do mês; positivado = cliente com pedido no mês.${fora ? ` ${fora} ${fora > 1 ? 'positivados são de fora da carteira' : 'positivado é de fora da carteira'}.` : ''}</span>
     <div class="h">Por ${chave} <small>toque para filtrar</small></div>
     <div class="list" data-lista="c-lugar">${gl.length ? limitar(gl.map(([k, g]) => `
       <button type="button" class="row" data-a="${chave === 'cidade' ? 'c-cid' : 'c-bai'}" data-v="${esc(k)}">
@@ -526,13 +547,13 @@ function vCarteira() {
         <span class="t">${esc(x.c.fantasia)} <span class="code">${x.c.cod}</span></span>
         <span class="r">${x.pot ? brl(x.pot) + '/mês' : '—'}</span>
         <span class="sub">${esc(titulo(x.c.bairro))}${x.c.bairro ? ' · ' : ''}${esc(titulo(x.c.cidade))}${rca || ehRca() ? '' : ' · ' + esc(rcaNome(x.c.rca))}</span>
-        <span class="sub r">${x.ult != null ? `última ${dm(x.ult)} <span class="pill ${d2 - x.ult > 60 ? 'bad' : 'warn'}">${d2 - x.ult} dias</span>` : 'sem compras'}</span>
+        <span class="sub r">${x.ult != null ? `última ${dm(x.ult)} <span class="pill ${d2 - x.ult > 60 ? 'bad' : 'warn'}">${d2 - x.ult} dias</span>` : 'sem pedido'}</span>
       </button>`;
   const mais300 = (n, oQue) => n > 300 ? vazio(`Mostrando 300 de ${nf0.format(n)} ${oQue}. Filtre por cidade ou RCA para ver o resto.`) : '';
-  const compPag = () => `<div class="h">Compraram em ${nomeMes(C.mes)} <small>ordem de valor</small></div>
-    <div class="list" data-lista="c-comp">${comp.length ? limitar(comp.slice(0, 300).map(linhaComp), 5, 'c-comp', 'Compraram em ' + nomeMes(C.mes), mais300(comp.length, 'compradores'), comp.length) : vazio('Nenhum cliente neste filtro.')}</div>`;
-  const naoPag = () => `<div class="h">Não compraram <small>${temPot ? 'maior potencial primeiro' : 'compra mais recente primeiro'}</small></div>
-    <div class="list" data-lista="c-nao">${nao.length ? limitar(nao.slice(0, 300).map(linhaNao), 5, 'c-nao', 'Não compraram em ' + nomeMes(C.mes), mais300(nao.length, 'clientes'), nao.length) : vazio('Todos os clientes da carteira compraram. 👏')}</div>
+  const compPag = () => `<div class="h">Com pedido em ${nomeMes(C.mes)} <small>ordem de valor</small></div>
+    <div class="list" data-lista="c-comp">${comp.length ? limitar(comp.slice(0, 300).map(linhaComp), 5, 'c-comp', 'Com pedido em ' + nomeMes(C.mes), mais300(comp.length, 'positivados'), comp.length) : vazio('Nenhum cliente neste filtro.')}</div>`;
+  const naoPag = () => `<div class="h">Sem pedido <small>${temPot ? 'maior potencial primeiro' : 'pedido mais recente primeiro'}</small></div>
+    <div class="list" data-lista="c-nao">${nao.length ? limitar(nao.slice(0, 300).map(linhaNao), 5, 'c-nao', 'Sem pedido em ' + nomeMes(C.mes), mais300(nao.length, 'clientes'), nao.length) : vazio('Todos os clientes da carteira tiveram pedido. 👏')}</div>
     ${!temPot ? '<span class="nota">O potencial (média dos 3 meses anteriores) não aparece no mês mais antigo: o app guarda só os últimos 4 meses.</span>' : ''}`;
   return { topo, pags: [['pos', 'Positivação', posPag], ['comp', `Compram<span class="n">${nf0.format(comp.length)}</span>`, compPag], ['nao', `Não compram<span class="n">${nf0.format(nao.length)}</span>`, naoPag]] };
 }
@@ -679,7 +700,7 @@ function vAbc() {
       return { k, ...x, part: x.v / tot, acc, abc: antes < .8 ? 'A' : antes < .95 ? 'B' : 'C' };
     });
     const max = rows.length ? rows[0].v : 1;
-    const base = D.cli.filter(c => naCarteira(c) && carteiraAtiva(c) && (!rca || c.rca === rca)).length || 1;
+    const base = D.cli.filter(c => daCarteira(c, D.hoje, rca)).length || 1;   // a carteira da 146 (1.9)
     const resumoCl = ['A', 'B', 'C'].map(cl => { const r = rows.filter(x => x.abc === cl); return [cl, r.length, r.reduce((a, x) => a + x.part, 0)]; });
     const nome = k => modo === 'cli' ? cliNome(k) : prodNome(k);
     const ms = [...meses].sort((a, b) => a - b), rotulo = ms.length > 1 ? nomeMes(ms[0]) + ' a ' + nomeMes(ms[ms.length - 1]) : nomeMes(ms[0]);
@@ -1438,7 +1459,19 @@ async function abrirEscopo(escopo, aoMontar) {
    notas e devoluções de ontem e hoje + os títulos em aberto) e o resumo do gestor. O app pergunta de 15 em 15 s, só
    com a tela à vista (/api/hoje, com a versão que já tem: sem mudança a resposta é minúscula), e põe o pacote do dia
    por cima do pacote da manhã (carga das 06:20): de ontem em diante vale o do dia; os títulos vêm inteiros dele. */
-const VIVO = { escopo: '', versao: '', hoje: null, resumo: null, vivo: null, pendente: false, ocupado: false, timer: null };
+const VIVO = { escopo: '', versao: '', hoje: null, resumo: null, vivo: null, pendente: false, ocupado: false, timer: null,
+               versaoJ: '', janela: null };
+/* 1.9: a JANELA são os dias antigos que o agente ainda relê (pedidos e devoluções de hoje-60 a hoje-2, notas de hoje-35 a
+   hoje-2). Vem com versão própria e só quando um deles muda (o WinThor corrigiu um dia antigo: a 146 e o Central Comercial
+   mudam na hora, e o app também). Entra antes do pacote do dia, que fica por cima onde os dois se cruzam. */
+function aplicarJanela(d, j) {
+  if (!d || !j || j.ini == null || j.fim == null) return;
+  const ini = j.ini, iniNf = j.ini_nf != null ? j.ini_nf : j.ini, fim = j.fim;
+  d.nf = d.nf.filter(o => o.d < iniNf || o.d > fim).concat((j.nf || []).map(linhaNf));
+  d.ped = d.ped.filter(o => o.d < ini || o.d > fim).concat((j.ped || []).map(linhaPed));
+  d.dev = d.dev.filter(o => o.d < ini || o.d > fim).concat((j.dev || []).map(linhaDev));
+  Object.assign(d.mot, j.mot || {});
+}
 function aplicarHoje(d, h, versao) {
   if (!d || !h || h.ini == null) return;
   const ini = h.ini, iniNf = h.ini_nf != null ? h.ini_nf : h.ini;
@@ -1474,9 +1507,9 @@ async function buscarHoje(pedidos) {
   const t = await A.token();
   if (!t) return null;
   const escopo = S.escopo;
-  if (VIVO.escopo !== escopo) { VIVO.escopo = escopo; VIVO.versao = ''; VIVO.hoje = null; }
-  const h = { Authorization: 'Bearer ' + t }; if (VIVO.versao) h['X-Versao'] = VIVO.versao;
-  const qs = [escopo[0] === 'S' ? 'escopo=' + escopo : '', pedidos && pedidos.length ? 'pedidos=' + pedidos.join(',') : ''].filter(Boolean).join('&');
+  if (VIVO.escopo !== escopo) { VIVO.escopo = escopo; VIVO.versao = ''; VIVO.hoje = null; VIVO.versaoJ = ''; VIVO.janela = null; }
+  const h = { Authorization: 'Bearer ' + t }; if (VIVO.versao) h['X-Versao'] = VIVO.versao; if (VIVO.versaoJ) h['X-Versao-J'] = VIVO.versaoJ;
+  const qs = [escopo[0] === 'S' ? 'escopo=' + escopo + '&janela=1' : '', pedidos && pedidos.length ? 'pedidos=' + pedidos.join(',') : ''].filter(Boolean).join('&');
   const r = await fetch((CFG.api || '') + '/api/hoje' + (qs ? '?' + qs : ''), { headers: h, cache: 'no-store' });
   if (!r.ok) return null;
   const j = await r.json();
@@ -1484,6 +1517,11 @@ async function buscarHoje(pedidos) {
   const antes = JSON.stringify(VIVO.vivo);
   VIVO.vivo = j.vivo || null;
   let mudou = false;
+  // a janela primeiro; o pacote do dia por cima (de novo, se não mudou: os dois se cruzam no mês)
+  if (j.janela) {
+    VIVO.janela = j.janela; VIVO.versaoJ = j.versao_j || '';
+    if (D) { aplicarJanela(D, j.janela); if (VIVO.hoje && !j.setor) aplicarHoje(D, VIVO.hoje, VIVO.versao); mudou = true; }
+  }
   if (!j.igual && (j.setor || j.resumo)) {
     VIVO.versao = j.versao;
     if (j.setor) { VIVO.hoje = j.setor; if (D) { aplicarHoje(D, j.setor, j.versao); mudou = true; } }

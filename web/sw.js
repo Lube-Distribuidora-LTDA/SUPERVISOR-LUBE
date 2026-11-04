@@ -5,7 +5,7 @@
  * Os DADOS não passam por aqui: o app guarda o pacote no IndexedDB e a /api nunca é
  * guardada pelo service worker (é por pessoa, com login).
  */
-const CASCA = 'sup-lube-casca-v8';   // v8: versão 1.8 (2026-11-04, digitado da 146 e margem do dia)
+const CASCA = 'sup-lube-casca-v9';   // v9: versão 1.9 (2026-11-04, números iguais aos da 146 e do Central Comercial)
 const ARQUIVOS = [
   './', 'index.html', 'css/app.css', 'fonts/fonts.css', 'js/config.js', 'js/acesso.js', 'js/app.js',
   'logo-lube.png', 'logo-lube-mini.png', 'manifest.webmanifest', 'icones/icone-192.png', 'icones/icone-512.png',

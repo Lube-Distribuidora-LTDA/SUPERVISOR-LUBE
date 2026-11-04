@@ -9,6 +9,10 @@
  *   vivo     o agente está ligado (batimento com menos de 3 min) e a hora da última leitura do WinThor de
  *            cada dado (pedido, faturado, títulos, devolução): o indicador "Ao vivo" do app
  *   pedidos  com ?pedidos=: como estão os pedidos do botão Atualizar (/api/atualizar)
+ *   janela   com ?janela=1 (app 1.9, 2026-11-04): os dias antigos que o agente ainda relê (pedidos e devoluções de hoje-60
+ *            a hoje-2, notas de hoje-35 a hoje-2; supervisor.pacote_janela), com versão própria ("X-Versao-J"): vem só
+ *            quando um deles muda. Sem ela, o app 1.8 segue igual. Júlio: "sempre precisam ser os mesmos números" que a
+ *            146 e o Central Comercial, que mudam na hora quando o WinThor corrige um dia antigo.
  *
  * O escopo sai do perfil (_escopo.js), como no /api/dados; o RCA leva só as linhas dele.
  */
@@ -25,14 +29,15 @@ function filtrarRca(p, codusur) {
   const out = Object.assign({}, p);
   out.nf = (p.nf || []).filter(meu(3));
   out.ped = (p.ped || []).filter(meu(4));
-  out.tit = (p.tit || []).filter(meu(1));
   out.dev = (p.dev || []).filter(meu(2));
+  if (p.tit) out.tit = p.tit.filter(meu(1));
+  if (!p.cli) return out;       // a janela não leva títulos nem clientes
   const clis = new Set();
   for (const r of out.nf) clis.add(r[2]);
   for (const r of out.ped) clis.add(r[3]);
-  for (const r of out.tit) clis.add(r[0]);
+  for (const r of out.tit || []) clis.add(r[0]);
   for (const r of out.dev) clis.add(r[1]);
-  out.cli = (p.cli || []).filter((c) => c[10] === codusur || clis.has(c[0]));
+  out.cli = p.cli.filter((c) => c[10] === codusur || clis.has(c[0]));
   return out;
 }
 
@@ -47,15 +52,18 @@ WITH b AS (SELECT max(visto_em) AS visto, bool_or(ligado) AS ligado FROM agente.
              FROM agente.estado WHERE status IN ('OK', 'AVISO')),
      s AS (SELECT versao, payload FROM supervisor.hoje WHERE escopo = $1),
      g AS (SELECT versao, payload FROM supervisor.hoje WHERE escopo = 'G' AND $2::boolean),
+     j AS (SELECT versao, payload FROM supervisor.hoje WHERE escopo = $6 AND $6 <> ''),
      p AS (SELECT coalesce(json_agg(json_build_object('id', id, 'sistema', sistema, 'status', status, 'mensagem', mensagem,
                                                       'segundos', segundos) ORDER BY id), '[]'::json) AS lista
              FROM agente.pedido WHERE id = ANY($4::bigint[])),
      -- a versão leva o escopo: todos os escopos de uma rodada saem com o mesmo carimbo, e o gestor que troca de setor
      -- não pode receber "igual"
-     v AS (SELECT $1 || ':' || coalesce((SELECT versao FROM s), '-') || '|' || coalesce((SELECT versao FROM g), '-') || $3 AS versao)
-SELECT v.versao,
+     v AS (SELECT $1 || ':' || coalesce((SELECT versao FROM s), '-') || '|' || coalesce((SELECT versao FROM g), '-') || $3 AS versao,
+                  CASE WHEN $6 = '' THEN NULL ELSE $6 || ':' || coalesce((SELECT versao FROM j), '-') || $3 END AS versao_j)
+SELECT v.versao, v.versao_j,
        CASE WHEN v.versao = $5 THEN NULL ELSE (SELECT payload FROM s) END AS s_payload,
        CASE WHEN v.versao = $5 THEN NULL ELSE (SELECT payload FROM g) END AS g_payload,
+       CASE WHEN v.versao_j IS NULL OR v.versao_j = $7 THEN NULL ELSE (SELECT payload FROM j) END AS j_payload,
        b.visto, coalesce(b.ligado, false) AS ligado, e.pedido, e.faturado, e.titulo, e.devolucao, p.lista
   FROM v, b, e, p`;
 
@@ -78,10 +86,13 @@ module.exports = async (req, res) => {
     const pedidos = String(q.pedidos || "").split(",").filter((x) => /^\d{1,15}$/.test(x)).slice(0, 4);
     const sufixo = alvo.rca ? "-R" + alvo.rca.cod : "";
     const versaoPedida = String(req.headers["x-versao"] || "");
+    // a janela é por setor ('J' || cod): o gestor sem setor aberto não leva
+    const janela = String(q.janela || "") === "1" && /^S\d+$/.test(escopo) ? "J" + escopo.slice(1) : "";
+    const versaoJPedida = String(req.headers["x-versao-j"] || "");
 
     let r;
     try {
-      r = await consultar(SQL, [escopo, gerente, sufixo, "{" + pedidos.join(",") + "}", versaoPedida]);
+      r = await consultar(SQL, [escopo, gerente, sufixo, "{" + pedidos.join(",") + "}", versaoPedida, janela, versaoJPedida]);
     } catch (e) {
       // banco sem o ao vivo (antes da migração supervisor_v6_ao_vivo) ou sem o agente: o app segue com a carga
       if (e && (e.code === "42P01" || e.code === "3F000")) return json(res, 200, { semHoje: true });
@@ -93,12 +104,15 @@ module.exports = async (req, res) => {
       pedido: l.pedido || null, faturado: l.faturado || null, titulo: l.titulo || null, devolucao: l.devolucao || null,
     };
     const cab = { "X-Versao-Pacote": l.versao };
-    if (!l.s_payload && !l.g_payload) {
-      return json(res, 200, { igual: l.versao === versaoPedida, versao: l.versao, vivo, pedidos: l.lista }, cab);
+    if (!l.s_payload && !l.g_payload && !l.j_payload) {
+      return json(res, 200, { igual: l.versao === versaoPedida, versao: l.versao, versao_j: l.versao_j, vivo, pedidos: l.lista }, cab);
     }
-    const setor = l.s_payload ? (alvo.rca ? JSON.stringify(filtrarRca(JSON.parse(l.s_payload), alvo.rca.cod)) : l.s_payload) : "null";
-    const corpo = '{"versao":' + JSON.stringify(l.versao) + ',"setor":' + setor + ',"resumo":' + (l.g_payload || "null") +
-                  ',"vivo":' + JSON.stringify(vivo) + ',"pedidos":' + JSON.stringify(l.lista) + "}";
+    const doRca = (txt) => (txt && alvo.rca ? JSON.stringify(filtrarRca(JSON.parse(txt), alvo.rca.cod)) : txt) || "null";
+    // "igual" fala do pacote do dia e do resumo; a janela pode chegar sozinha (um dia antigo mudou)
+    const igual = !l.s_payload && !l.g_payload && l.versao === versaoPedida;
+    const corpo = '{"versao":' + JSON.stringify(l.versao) + ',"igual":' + igual + ',"setor":' + doRca(l.s_payload) +
+                  ',"resumo":' + (l.g_payload || "null") + ',"versao_j":' + JSON.stringify(l.versao_j) +
+                  ',"janela":' + doRca(l.j_payload) + ',"vivo":' + JSON.stringify(vivo) + ',"pedidos":' + JSON.stringify(l.lista) + "}";
     res.statusCode = 200;
     res.setHeader("Content-Type", "application/json; charset=utf-8");
     res.setHeader("Content-Encoding", "gzip");
