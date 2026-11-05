@@ -11,6 +11,17 @@
     "contentInset": "never"
   },
   "plugins": {
+    "CapacitorUpdater": {
+      "autoUpdate": false,
+      "updateUrl": "",
+      "channelUrl": "",
+      "statsUrl": "",
+      "appReadyTimeout": 10000,
+      "responseTimeout": 30,
+      "autoDeleteFailed": true,
+      "autoDeletePrevious": true,
+      "resetWhenUpdate": true
+    },
     "SystemBars": {
       "insetsHandling": "css",
       "initialViewportFitValueHint": "cover",

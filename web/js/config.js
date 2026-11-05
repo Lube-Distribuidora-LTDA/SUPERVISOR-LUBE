@@ -9,6 +9,8 @@
    https://localhost ou capacitor://localhost) e os dados vêm do site publicado
    — por isso "api" aponta para lá. No navegador, "api" fica vazio (mesmo endereço).
    VERSAO é trocada a cada publicação (o menu da conta mostra qual está no ar).
+   TELAS (1.11) é o número do pacote das telas: o app nativo baixa sozinho o de número maior que o dele
+   (web/telas/versao.json, gerado pelo app/gerar-telas.js). Subir a cada publicação de tela.
    ========================================================= */
 (function () {
   var cap = window.Capacitor;
@@ -20,6 +22,7 @@
     site: 'https://supervisor-lube.vercel.app',
     api: nativo ? 'https://supervisor-lube.vercel.app' : '',
     nativo: nativo,
-    versao: '1.10 · 2026-11-05',
+    versao: '1.11 · 2026-11-05',
+    telas: 1,
   };
 })();

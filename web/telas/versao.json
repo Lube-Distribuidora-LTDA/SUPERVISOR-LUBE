@@ -1,0 +1,10 @@
+{
+  "telas": 1,
+  "versao": "1.11 · 2026-11-05",
+  "url": "/telas/telas-1.zip",
+  "sha256": "60d4920778f27ab6ca7142792340ac8423475f0b55826bd42f27b72183f22f42",
+  "minNativo": 12,
+  "arquivos": 29,
+  "bytes": 1334931,
+  "nota": "Gerado pelo app/gerar-telas.js. O app nativo baixa o pacote quando 'telas' for maior que o dele e o versionCode do APK for pelo menos minNativo."
+}

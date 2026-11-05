@@ -7,6 +7,8 @@
  * próprio APK de download (web/baixar).
  *
  *   node preparar-web.js        (o GERAR APK.bat roda sozinho, antes do "cap sync")
+ *
+ * A mesma lista (LEVAR) monta o pacote das telas que o app baixa sozinho (gerar-telas.js, desde a 1.11).
  */
 "use strict";
 const fs = require("fs");
@@ -16,15 +18,20 @@ const WEB = path.join(__dirname, "..", "web");
 const WWW = path.join(__dirname, "www");
 const LEVAR = ["index.html", "manifest.webmanifest", "logo-lube.png", "logo-lube-mini.png", "css", "js", "fonts", "icones"];
 
-fs.rmSync(WWW, { recursive: true, force: true });
-fs.mkdirSync(WWW, { recursive: true });
-let n = 0;
-function copiar(de, para) {
-  const st = fs.statSync(de);
-  if (st.isDirectory()) {
-    fs.mkdirSync(para, { recursive: true });
-    for (const f of fs.readdirSync(de)) copiar(path.join(de, f), path.join(para, f));
-  } else { fs.copyFileSync(de, para); n++; }
+function preparar() {
+  fs.rmSync(WWW, { recursive: true, force: true });
+  fs.mkdirSync(WWW, { recursive: true });
+  let n = 0;
+  function copiar(de, para) {
+    const st = fs.statSync(de);
+    if (st.isDirectory()) {
+      fs.mkdirSync(para, { recursive: true });
+      for (const f of fs.readdirSync(de)) copiar(path.join(de, f), path.join(para, f));
+    } else { fs.copyFileSync(de, para); n++; }
+  }
+  for (const item of LEVAR) copiar(path.join(WEB, item), path.join(WWW, item));
+  console.log("Telas copiadas para o APK: " + n + " arquivos em " + WWW);
 }
-for (const item of LEVAR) copiar(path.join(WEB, item), path.join(WWW, item));
-console.log("Telas copiadas para o APK: " + n + " arquivos em " + WWW);
+
+module.exports = { WEB, LEVAR };
+if (require.main === module) preparar();

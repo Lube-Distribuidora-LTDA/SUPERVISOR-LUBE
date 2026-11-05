@@ -76,7 +76,7 @@ const S = {
   pag: { vendas: 'hoje', carteira: 'pos', abc: 'cli', inad: 'resumo', dev: 'resumo', cli: 'resumo', adm: 'regioes' },
   pilha: [], rolagens: [],   // telas empilhadas por cima da aba (cliente, busca, lista completa, supervisores)
   v: { rca: 0, dia: null, de: null, ate: null, q: 'mes', graf: 'fat', qr: 'mes' },
-  c: { mes: null, rca: 0, cid: '', bai: '' },
+  c: { q: 'mes', ref: null, rca: 0, cid: '', bai: '' },
   k: { raw: '', modo: 'forn' },
   a: { per: 'mes', rca: 0 },
   i: { open: 0 },
@@ -481,10 +481,13 @@ function vVendas() {
 
 /* ---------------- aba: carteira ---------------- */
 function vCarteira() {
-  const C = S.c, H = D.hoje, m0 = mesDe(H);
-  const meses = []; for (let m = m0; m >= mesDe(D.ini); m = mesSeg(m, -1)) meses.push(m);
-  if (C.mes == null || !meses.includes(C.mes)) C.mes = m0;
-  const d1 = C.mes, d2 = Math.min(H, mesSeg(C.mes, 1) - 1);
+  const C = S.c, H = D.hoje;
+  // 1.11 (Júlio): Dia, Semana ou Mês até a data escolhida, como o filtro dos RCAs em Vendas
+  if (C.ref == null || C.ref > H || C.ref < D.ini) C.ref = H;
+  const q = C.q || 'mes', ref = C.ref;
+  const d1 = q === 'dia' ? ref : q === 'semana' ? Math.max(D.ini, ref - ((dow(ref) + 6) % 7)) : Math.max(D.ini, mesDe(ref)), d2 = ref;
+  const rotulo = q === 'dia' ? 'em ' + diaLongo(ref) : q === 'semana' ? `de ${dm(d1)} a ${dm(ref)}` : `em ${nomeMes(ref)}${ref === H ? ' até hoje' : ' até ' + dm(ref)}`;
+  const noPer = q === 'dia' ? 'no dia' : q === 'semana' ? 'na semana' : 'no mês';
   const rca = ehRca() ? D.codusur : C.rca;
   // 1.9: a carteira e os positivados da 146 (Total cadastrado e Positivados); o valor é a venda do pedido (o digitado)
   const cart = D.cli.filter(c => daCarteira(c, d2, rca));
@@ -494,11 +497,12 @@ function vCarteira() {
     if (o.d < d1 || o.d > d2 || (rca && o.rca !== rca)) continue;
     const x = vendas.get(o.cli) || { vl: 0, n: new Set() }; x.vl += o.vl; x.n.add(o.num); vendas.set(o.cli, x);
   }
-  const potIni = mesSeg(d1, -3), temPot = potIni >= D.ini;
+  // potencial = média dos 3 meses cheios antes do mês da data (no Dia e na Semana também, para não somar pedaço de mês)
+  const mRef = mesDe(d1), potIni = mesSeg(mRef, -3), temPot = potIni >= D.ini;
   const pot = new Map(), ult = new Map();
   for (const o of D.ped) {
     if (rca && o.rca !== rca) continue;
-    if (o.d >= potIni && o.d < d1) pot.set(o.cli, (pot.get(o.cli) || 0) + o.vl);
+    if (o.d >= potIni && o.d < mRef) pot.set(o.cli, (pot.get(o.cli) || 0) + o.vl);
     if (o.d <= d2 && (!ult.has(o.cli) || ult.get(o.cli) < o.d)) ult.set(o.cli, o.d);
   }
   const ultima = c => { const u = ult.get(c.cod); return u != null ? u : (c.ult != null && c.ult <= d2 ? c.ult : null); };
@@ -515,17 +519,17 @@ function vCarteira() {
   const chave = C.cid ? 'bairro' : 'cidade', grupos = new Map();
   for (const c of cartF) { const k = c[chave] || '(sem ' + chave + ')', g = grupos.get(k) || { t: 0, c: 0 }; g.t++; if (vendas.has(c.cod)) g.c++; grupos.set(k, g); }
   const gl = [...grupos.entries()].sort((a, b) => b[1].t - a[1].t);
-  const topo = `<div class="pilulas">
-    ${pilSel('c-mes', 'Mês', C.mes, meses.map(m => [m, nomeMes(m) + (m === m0 ? ' (até hoje)' : '')]))}
+  const topo = `<div class="pilulas">${chips('c-q', q, [['mes', 'Mês'], ['semana', 'Semana'], ['dia', 'Dia']])}${pilData('c-ref', q === 'dia' ? 'Dia' : 'Até', ref)}</div>
+  <div class="pilulas">
     ${ehRca() ? '' : pilRca('c-rca', C.rca)}
     ${pilSel('c-cid', 'Cidade', C.cid, [['', 'Todas'], ...cidades.map(c => [c, titulo(c)])])}
     ${C.cid ? pilSel('c-bai', 'Bairro', C.bai, [['', 'Todos'], ...bairros.map(b => [b, titulo(b)])]) : ''}
   </div>`;
   const posPag = () => `
     <div class="card pos-card">${anel(fr)}
-      <div><div class="cartao-rot">Positivação no mês</div><div class="big">${pct(fr, 0)}</div><div class="sub">${nf0.format(pos)} positivados de ${nf0.format(cartF.length)} cadastrados</div></div>
+      <div><div class="cartao-rot">Positivação ${noPer}</div><div class="big">${pct(fr, 0)}</div><div class="sub">${nf0.format(pos)} positivados de ${nf0.format(cartF.length)} cadastrados · ${rotulo}</div></div>
     </div>
-    <span class="nota">Como no Relatório 146: carteira = clientes com ${ehRca() ? 'você' : 'um RCA do setor'} como RCA 1 ou 2, cadastrados até o fim do mês; positivado = cliente com pedido no mês.${fora ? ` ${fora} ${fora > 1 ? 'positivados são de fora da carteira' : 'positivado é de fora da carteira'}.` : ''}</span>
+    <span class="nota">Como no Relatório 146: carteira = clientes com ${ehRca() ? 'você' : 'um RCA do setor'} como RCA 1 ou 2, cadastrados até o fim do período; positivado = cliente com pedido no período.${fora ? ` ${fora} ${fora > 1 ? 'positivados são de fora da carteira' : 'positivado é de fora da carteira'}.` : ''}</span>
     <div class="h">Por ${chave} <small>toque para filtrar</small></div>
     <div class="list" data-lista="c-lugar">${gl.length ? limitar(gl.map(([k, g]) => `
       <button type="button" class="row" data-a="${chave === 'cidade' ? 'c-cid' : 'c-bai'}" data-v="${esc(k)}">
@@ -547,10 +551,10 @@ function vCarteira() {
         <span class="sub r">${x.ult != null ? `última ${dm(x.ult)} <span class="pill ${d2 - x.ult > 60 ? 'bad' : 'warn'}">${d2 - x.ult} dias</span>` : 'sem pedido'}</span>
       </button>`;
   const mais300 = (n, oQue) => n > 300 ? vazio(`Mostrando 300 de ${nf0.format(n)} ${oQue}. Filtre por cidade ou RCA para ver o resto.`) : '';
-  const compPag = () => `<div class="h">Com pedido em ${nomeMes(C.mes)} <small>ordem de valor</small></div>
-    <div class="list" data-lista="c-comp">${comp.length ? limitar(comp.slice(0, 300).map(linhaComp), 5, 'c-comp', 'Com pedido em ' + nomeMes(C.mes), mais300(comp.length, 'positivados'), comp.length) : vazio('Nenhum cliente neste filtro.')}</div>`;
-  const naoPag = () => `<div class="h">Sem pedido <small>${temPot ? 'maior potencial primeiro' : 'pedido mais recente primeiro'}</small></div>
-    <div class="list" data-lista="c-nao">${nao.length ? limitar(nao.slice(0, 300).map(linhaNao), 5, 'c-nao', 'Sem pedido em ' + nomeMes(C.mes), mais300(nao.length, 'clientes'), nao.length) : vazio('Todos os clientes da carteira tiveram pedido. 👏')}</div>
+  const compPag = () => `<div class="h">Com pedido <small>${rotulo} · ordem de valor</small></div>
+    <div class="list" data-lista="c-comp">${comp.length ? limitar(comp.slice(0, 300).map(linhaComp), 5, 'c-comp', 'Com pedido ' + rotulo, mais300(comp.length, 'positivados'), comp.length) : vazio('Nenhum cliente neste filtro.')}</div>`;
+  const naoPag = () => `<div class="h">Sem pedido <small>${rotulo} · ${temPot ? 'maior potencial primeiro' : 'pedido mais recente primeiro'}</small></div>
+    <div class="list" data-lista="c-nao">${nao.length ? limitar(nao.slice(0, 300).map(linhaNao), 5, 'c-nao', 'Sem pedido ' + rotulo, mais300(nao.length, 'clientes'), nao.length) : vazio('Todos os clientes da carteira tiveram pedido. 👏')}</div>
     ${!temPot ? '<span class="nota">O potencial (média dos 3 meses anteriores) não aparece no mês mais antigo: o app guarda só os últimos 4 meses.</span>' : ''}`;
   return { topo, pags: [['pos', 'Positivação', posPag], ['comp', `Compram<span class="n">${nf0.format(comp.length)}</span>`, compPag], ['nao', `Não compram<span class="n">${nf0.format(nao.length)}</span>`, naoPag]] };
 }
@@ -1198,6 +1202,45 @@ function contar(raiz) {
     setTimeout(() => { el.textContent = f(alvo); }, T + 250);
   });
 }
+/* 1.11 (Júlio): ao filtrar, cada número dos cartões corre do valor antigo até o novo. Os das listas não: depois do
+   filtro a mesma linha pode ser outro cliente. O par antigo/novo é achado pelo nome do cartão, não pela posição. */
+const SEL_NUM = '.valor-grande, .kpi .v, .tile .v:not(.txt), .trio b, .pos-card .big, .meta-grade b';
+function chaveNum(el) {
+  const k = el.closest('.kpi'); if (k) { const l = k.querySelector('.l'); return 'kpi:' + (l ? l.textContent.trim() : ''); }
+  const tr = el.closest('.trio > span'); if (tr) { const s = tr.querySelector('small'); return 'trio:' + (s ? s.textContent.trim() : ''); }
+  const c = el.closest('.tile, .pos-card, .hoje-card, .mes-card, .meta-grade');
+  return (c ? c.className : '') + ':' + el.className;
+}
+function numerosDa(raiz) {
+  const n = new Map();
+  return [...raiz.querySelectorAll(SEL_NUM)].map(el => { const b = chaveNum(el), i = n.get(b) || 0; n.set(b, i + 1); return [b + '#' + i, el]; });
+}
+const lerNumeros = raiz => new Map(numerosDa(raiz).map(([k, el]) => [k, el.textContent]));
+function partesNum(txt) {
+  const m = /-?\d{1,3}(?:\.\d{3})+(?:,\d+)?|-?\d+(?:,\d+)?/.exec(txt); if (!m) return null;
+  return { pre: txt.slice(0, m.index), pos: txt.slice(m.index + m[0].length), dec: (m[0].split(',')[1] || '').length, v: +m[0].replace(/\./g, '').replace(',', '.') };
+}
+function rolarNumeros(raiz, antes) {
+  if (REDUZ || !antes || !antes.size) return;
+  const vai = [];
+  for (const [k, el] of numerosDa(raiz)) {
+    const velho = antes.get(k), novo = el.textContent;
+    if (velho == null || velho === novo || el.children.length) continue;   // só número puro (sem pílula dentro)
+    const a = partesNum(velho), b = partesNum(novo);
+    if (!a || !b || a.pre !== b.pre || a.pos !== b.pos) continue;
+    vai.push({ el, a, b, novo });
+    if (velho.length > novo.length) el.textContent = velho;   // a fonte se ajusta ao maior dos dois: nada vaza no meio
+  }
+  if (!vai.length) return;
+  encaixar(raiz);
+  const t0 = performance.now(), T = 650;
+  for (const x of vai) {
+    const fmt = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: x.b.dec, maximumFractionDigits: x.b.dec });
+    const passo = t => { const k = Math.min(1, (t - t0) / T), e = 1 - Math.pow(1 - k, 3); x.el.textContent = x.b.pre + fmt.format(x.a.v + (x.b.v - x.a.v) * e) + x.b.pos; if (k < 1) requestAnimationFrame(passo); };
+    requestAnimationFrame(passo);
+    setTimeout(() => { x.el.textContent = x.novo; }, T + 250);
+  }
+}
 
 /* o: { anim: 'push' | 'pop' | 'aba' | 'pag+' | 'pag-', topo: true, rolar: y } */
 function render(o) {
@@ -1211,6 +1254,7 @@ function render(o) {
   } else if (anim && anim !== 'aba') g = fotografar(view);   // troca de aba não copia a tela velha: só esmaece a nova
   // filtros em pílula que deslizam: guarda onde estavam (senão voltam para o começo a cada toque)
   const rolos = anim ? [] : [...view.querySelectorAll('.pilulas, .chips.rola')].map(x => x.scrollLeft);
+  const antes = anim ? null : lerNumeros(view), chaveAnt = S.chave;   // filtro na mesma tela: os números correm (1.11)
   let t;
   try { t = montarTela(); } catch (e) { console.error(e); t = { chave: 'erro', titulo: 'Ops', html: `<div class="msg bad">Algo deu errado ao montar esta tela: ${esc(e.message)}. Toque em outra aba ou atualize.</div>` }; }
   S.chave = t.chave;
@@ -1226,10 +1270,12 @@ function render(o) {
   dockAtualizar();
   if (anim) animar(anim, g);
   // a cascata de entrada (cartões subindo, barras crescendo) só na primeira vez que o Resumo abre com o pacote
+  let contou = false;
   if (t.chave === 'resumo' && D) {
     const k = S.escopo + '|' + D.gerado;
-    if (S.contado !== k) { S.contado = k; entrar(view); contar(view); }
+    if (S.contado !== k) { S.contado = k; entrar(view); contar(view); contou = true; }
   }
+  if (antes && !contou && t.chave === chaveAnt) rolarNumeros(view, antes);
   salvarTela();
   aoRolar();
 }
@@ -1640,6 +1686,7 @@ document.addEventListener('click', e => {
     case 'v-q': if (v) { S.v.q = v; const [d1, d2] = periodo(v); S.v.de = d1; S.v.ate = d2; } else S.v.q = ''; break;
     case 'v-graf': S.v.graf = v; break;
     case 'v-qr': S.v.qr = v; break;
+    case 'c-q': S.c.q = v; break;
     case 'c-cid': S.c.cid = v; S.c.bai = ''; if (naRaiz()) return; break;
     case 'c-bai': S.c.bai = v; if (naRaiz()) return; break;
     case 'k-modo': S.k.modo = v; break;
@@ -1676,7 +1723,7 @@ document.addEventListener('change', e => {
     case 'v-dia': { const d = data(v); if (d !== null) S.v.dia = d; break; }
     case 'v-de': { const d = data(v); if (d !== null) { S.v.de = d; S.v.q = ''; } break; }
     case 'v-ate': { const d = data(v); if (d !== null) { S.v.ate = d; S.v.q = ''; } break; }
-    case 'c-mes': S.c.mes = +v; break;
+    case 'c-ref': { const d = data(v); if (d !== null) S.c.ref = d; break; }
     case 'c-rca': S.c.rca = +v; S.c.cid = ''; S.c.bai = ''; break;
     case 'c-cid': S.c.cid = v; S.c.bai = ''; break;
     case 'c-bai': S.c.bai = v; break;
@@ -1898,6 +1945,38 @@ if (CFG.nativo) try {
   };
   conferirVersao();
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && Date.now() - conferidaEm > 30 * 60e3) conferirVersao(); });
+
+  // 1.11 (Júlio: "atualizou e já mudou", sem baixar APK): as telas novas chegam sozinhas. O site publica
+  // telas/versao.json e o .zip (app/gerar-telas.js); o plugin baixa, confere o SHA-256 e troca. Logo depois de
+  // abrir (ou de voltar para o app) troca na hora; no meio do uso, deixa para quando o app sair e voltar.
+  // Se a tela nova não chamar o notifyAppReady em 10 s, o plugin volta sozinho para a anterior.
+  const U = P.CapacitorUpdater;
+  if (U && U.notifyAppReady) {
+    U.notifyAppReady().catch(() => { /* sem o plugin pronto: segue com as telas de dentro do APK */ });
+    let telasEm = 0, abriuEm = Date.now(), baixandoTelas = false;
+    const quieto = () => !S.pilha.length && $('#folha').hidden && !$('#alerta-versao');
+    const conferirTelas = () => {
+      if (baixandoTelas) return;
+      baixandoTelas = true; telasEm = Date.now();
+      minhaBuild.then(build => fetch(CFG.site + '/telas/versao.json', { cache: 'no-store' })
+        .then(r => r.ok ? r.json() : null)
+        .then(v => {
+          if (!v || !(Number(v.telas) > (CFG.telas || 0)) || build < Number(v.minNativo || 0) || !v.url || !v.sha256) return null;
+          return U.download({ url: CFG.site + v.url, version: 'telas-' + v.telas, checksum: v.sha256 }).then(b => {
+            if (Date.now() - abriuEm < 15e3 && quieto()) return U.set({ id: b.id });   // recarrega já com as telas novas
+            return U.next({ id: b.id }).then(() => toast('Telas novas prontas: entram quando você sair e voltar ao app.'));
+          });
+        }))
+        .catch(() => { /* sem rede ou pacote recusado: confere de novo na próxima abertura */ })
+        .finally(() => { baixandoTelas = false; });
+    };
+    conferirTelas();
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState !== 'visible') return;
+      abriuEm = Date.now();
+      if (Date.now() - telasEm > 10 * 60e3) conferirTelas();
+    });
+  }
 } catch (e) { /* recurso nativo indisponível nesta versão: o app segue normal */ }
 // prévia nesta máquina: localhost:3104/?previa=gerente&aviso=1 simula uma versão nova (para ver o alerta)
 if (!CFG.nativo && location.protocol === 'http:' && /^(localhost|127\.0\.0\.1)$/.test(location.hostname) && new URLSearchParams(location.search).has('aviso')) {

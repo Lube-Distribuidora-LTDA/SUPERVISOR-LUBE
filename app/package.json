@@ -10,7 +10,8 @@
     "@capacitor/android": "^8.5.3",
     "@capacitor/app": "^8.1.2",
     "@capacitor/core": "^8.5.3",
-    "@capacitor/ios": "^8.5.3"
+    "@capacitor/ios": "^8.5.3",
+    "@capgo/capacitor-updater": "^8.54.2"
   },
   "devDependencies": {
     "@capacitor/cli": "^8.5.3"
