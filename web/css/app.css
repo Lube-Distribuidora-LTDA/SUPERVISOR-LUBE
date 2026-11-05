@@ -212,6 +212,7 @@ main { flex: 1; position: relative; padding-block: 2px calc(108px + env(safe-are
 .kpi.hero .v { font-size: 30px; background: linear-gradient(180deg, var(--gold-strong), var(--gold)); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .kpi.wide { grid-column: 1 / -1; }
 .kpi.wide .v { font-size: 30px; }
+.kpi.cheia { grid-column: 1 / -1; }   /* 1.10: linha inteira no tamanho normal (Ticket médio de Vendas › Dia) */
 .kpi.perigo .v { color: var(--bad); }
 .kpi.perigo { --cor-brilho: rgba(255, 107, 116, .22); --cor-ic: var(--bad); }
 .kpi.atencao { --cor-brilho: rgba(255, 179, 64, .2); --cor-ic: var(--warn); }
@@ -276,6 +277,7 @@ button.row:active { background: var(--press); transition: none; }
 .mes-card .valor-grande { font-size: 26px; background: none; color: var(--ink); -webkit-text-fill-color: currentColor; }
 .linha-valor { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .trio { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr) minmax(0, 1fr); gap: 8px; border-top: 1px solid var(--line); padding-top: 8px; margin-top: 2px; }
+.trio.duo { grid-template-columns: repeat(2, minmax(0, 1fr)); }   /* 1.10: o Digitado hoje sem o faturado do dia */
 .trio > span { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .trio small { font: 700 9.5px var(--f-body); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
 .trio b { font: 800 14.5px var(--f-num); letter-spacing: -.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

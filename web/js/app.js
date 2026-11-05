@@ -348,7 +348,6 @@ function metaTodas(m0) {
 function vResumo() {
   const H = D.hoje, m0 = mesDe(H);
   const hj = resumoPed(D.ped.filter(o => o.d === H)), ant = resumoPed(D.ped.filter(o => o.d === H - 7));
-  const fh = resumoNf(D.nf.filter(o => o.d === H));
   const dl = ant.vl ? hj.vl / ant.vl - 1 : null;
   const mes = resumoNf(D.nf.filter(o => o.d >= m0 && o.d <= H));
   // mês anterior com o mesmo número de dias corridos (comparação justa)
@@ -377,8 +376,7 @@ function vResumo() {
       <span class="cartao-rot">${ic('cart')}Digitado hoje <small>até ${hm(D.cargas.pedido)}</small>${ic('frente', 'seta')}</span>
       <span class="valor-grande" data-cnt="${hj.vl}" data-f="brlK">${brlK(hj.vl)}</span>
       <span class="sub">${dl != null ? delta(dl, 'vs. ' + diaLongo(H - 7)) : 'sem pedido em ' + diaLongo(H - 7) + ' para comparar'}</span>
-      <span class="trio">
-        <span><small>Faturado</small><b data-cnt="${fh.vl}" data-f="brlK">${brlK(fh.vl)}</b></span>
+      <span class="trio duo">
         <span><small>Pedidos</small><b data-cnt="${hj.ped}" data-f="n">${nf0.format(hj.ped)}</b></span>
         <span><small>Clientes</small><b data-cnt="${hj.pos}" data-f="n">${nf0.format(hj.pos)}</b></span>
       </span>
@@ -420,7 +418,6 @@ function vVendas() {
 
   const dia = () => {
     const pd = resumoPed(D.ped.filter(o => o.d === V.dia && f(o))), pa = resumoPed(D.ped.filter(o => o.d === V.dia - 7 && f(o)));
-    const fd = resumoNf(D.nf.filter(o => o.d === V.dia && f(o)));
     const delta = pa.vl ? pd.vl / pa.vl - 1 : 0;
     const dTxt = pa.vl ? `<span class="delta ${delta >= 0 ? 'up' : 'down'}">${delta >= 0 ? '▲' : '▼'} ${pct(Math.abs(delta), 0)}</span> vs. ${diaLongo(V.dia - 7)} (${brlK(pa.vl)})` : (V.dia - 7 >= D.ini ? `sem pedido em ${diaLongo(V.dia - 7)}` : '');
     const parcial = V.dia === H ? ` · até ${hm(D.cargas.pedido)}` : '';
@@ -428,7 +425,7 @@ function vVendas() {
     return `
     <div class="pilulas">${pilRca('v-rca', rca)}${pilData('v-dia', 'Dia', V.dia)}</div>
     <div class="h">Venda do dia <small>${diaLongo(V.dia)}${parcial}</small></div>
-    <div class="kpis k2">${kpi('Digitado', brlK(pd.vl), dTxt, 'hero')}${kpi('Faturado', brlK(fd.vl), 'notas do dia')}${kpi('Pedidos', nf0.format(pd.ped), 'digitados')}${kpi('Positivação', nf0.format(pd.pos), 'clientes com pedido')}${kpi('Ticket médio', brlK(pd.tk), 'por pedido')}</div>
+    <div class="kpis k2">${kpi('Digitado', brlK(pd.vl), dTxt, 'hero')}${kpi('Pedidos', nf0.format(pd.ped), 'digitados')}${kpi('Positivação', nf0.format(pd.pos), 'clientes com pedido')}${kpi('Ticket médio', brlK(pd.tk), 'por pedido', 'cheia')}</div>
     ${sem ? `<button type="button" class="faixa toque" data-a="pag" data-v="rcas">${sem} ${sem > 1 ? 'RCAs ativos ainda sem pedido' : 'RCA ativo ainda sem pedido'} hoje${ic('frente', 'seta')}</button>` : ''}`;
   };
   const periodoPag = () => {
@@ -579,7 +576,7 @@ function telaCliente(cod) {
   const gaps = datas.slice(1).map((d, i) => d - datas[i]), freq = gaps.length ? gaps.reduce((a, b) => a + b, 0) / gaps.length : null;
   const v90 = peds.filter(p => p.d > H - 90);
   const abertos = D.tit.filter(t => t.cli === c.cod && t.grupo === 'cobranca'), venc = abertos.filter(t => t.venc < H);
-  const outros = D.tit.filter(t => t.cli === c.cod && t.grupo !== 'cobranca');
+  const outros = D.tit.filter(t => t.cli === c.cod && t.grupo === 'juridico');   // 1.10: sem os títulos fora da cobrança
   const emAberto = soma(abertos, t => t.valor), vencido = soma(venc, t => t.valor), disp = c.limite - emAberto;
   const pills = [];
   if (c.bloq) pills.push('<span class="pill bad">Bloqueado no WinThor</span>');
@@ -630,7 +627,7 @@ function telaCliente(cod) {
       <span class="sub">vence ${dmy(t.venc)} · ${esc(titulo(D.cob[t.cob] || t.cob || ''))}</span><span class="sub r">${t.venc < H ? `<span class="pill ${H - t.venc > 30 ? 'bad' : 'warn'}">${H - t.venc} dias</span>` : '<span class="pill">a vencer</span>'}</span></div>`);
     return `<div class="h">Títulos em aberto <small>${brl(emAberto)}</small></div>
       <div class="list" data-lista="k-tit">${rows.length ? limitar(rows, Math.max(6, venc.length), 'k-tit', 'Títulos de ' + c.fantasia) : vazio('Nenhum título em aberto. 👏')}</div>
-      ${outros.length ? `<div class="faixa info">Fora da cobrança (jurídico, perdas ou crédito): ${brl(soma(outros, t => t.valor))} em ${outros.length} ${outros.length > 1 ? 'títulos' : 'título'}.</div>` : ''}`;
+      ${outros.length ? `<div class="faixa">Jurídico e perdas: ${brl(soma(outros, t => t.valor))} em ${outros.length} ${outros.length > 1 ? 'títulos' : 'título'} — fora do em aberto.</div>` : ''}`;
   };
   const pCompras = () => {
     let rows;
@@ -736,7 +733,7 @@ function vInad() {
   const H = D.hoje;
   const meus = D.tit.filter(t => t.grupo === 'cobranca' && t.venc < H);
   const aVencer = D.tit.filter(t => t.grupo === 'cobranca' && t.venc >= H);
-  const jur = D.tit.filter(t => t.grupo === 'juridico'), fora = D.tit.filter(t => t.grupo === 'fora');
+  const jur = D.tit.filter(t => t.grupo === 'juridico');   // 1.10 (Júlio): sem a linha "Fora da cobrança"
   const tot = soma(meus, t => t.valor);
   const clis = new Set(meus.map(t => t.cli));
   const bloq = [...clis].filter(c => { const x = D.CMAP.get(c); return x && x.bloq; }).length;
@@ -747,8 +744,7 @@ function vInad() {
       <div class="stack">${faixas.map(fx => fx.v ? `<i style="width:${(fx.v / (tot || 1) * 100).toFixed(1)}%;background:var(--${fx.cor})" title="${fx.b > 9999 ? '+90' : fx.a + '–' + fx.b} dias: ${brl2(fx.v)}"></i>` : '').join('')}</div>
       <div class="legend">${faixas.map(fx => `<span><i style="background:var(--${fx.cor})"></i>${fx.b > 9999 ? '+90' : fx.a + '–' + fx.b} dias · <b class="num">${brlK(fx.v)}</b></span>`).join('')}</div>
     </div>
-    ${jur.length ? `<div class="faixa">Jurídico e perdas: ${brl(soma(jur, t => t.valor))} em ${jur.length} ${jur.length > 1 ? 'títulos' : 'título'} — fora da soma acima.</div>` : ''}
-    ${fora.length ? `<div class="faixa info">Fora da cobrança (bonificação, devolução, crédito): ${brl(soma(fora, t => t.valor))} em ${fora.length} ${fora.length > 1 ? 'títulos' : 'título'}.</div>` : ''}`;
+    ${jur.length ? `<div class="faixa">Jurídico e perdas: ${brl(soma(jur, t => t.valor))} em ${jur.length} ${jur.length > 1 ? 'títulos' : 'título'} — fora da soma acima.</div>` : ''}`;
   const porCli = lista => {
     const cl = new Map();
     for (const t of lista) { const x = cl.get(t.cli) || { v: 0, at: 0, n: 0 }; x.v += t.valor; x.at = Math.max(x.at, H - t.venc); x.n++; cl.set(t.cli, x); }
