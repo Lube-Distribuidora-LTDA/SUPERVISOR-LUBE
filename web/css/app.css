@@ -556,3 +556,9 @@ mark { background: var(--gold-soft); color: var(--gold-strong); border-radius: 3
 .conta-card .botoes { display: flex; flex-wrap: wrap; gap: 8px; }
 .conta-card .botoes .btn { flex: 1 1 auto; }
 .btn.verde { background: var(--good); color: #04140d; box-shadow: none; }
+/* 1.11.5: excluir conta recusada ou bloqueada (botão no cartão e confirmação na folha) */
+.btn.perigo { background: var(--bad-soft); color: var(--bad); border: 1px solid color-mix(in srgb, var(--bad) 40%, transparent); box-shadow: none; }
+.btn.perigo.cheio { background: var(--bad); color: #fff; border: 0; }
+.folha .confirma { display: flex; flex-direction: column; gap: 12px; }
+.folha .confirma .quem-ex b { display: block; font: 700 16px var(--f-body); overflow-wrap: anywhere; }
+.folha .confirma .quem-ex span { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }

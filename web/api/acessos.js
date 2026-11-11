@@ -11,6 +11,8 @@
  *       as regiões, só consulta) ou o supervisor de uma região (tipo 'supervisor', só a região dele). Grava
  *       o convite (função sup_convidar do Painel, que gera o código de 6 números e, se a pessoa já tem conta,
  *       libera na hora) e devolve o código para o administrador mandar na mensagem.
+ * POST  { acao: 'excluir', id } — 1.11.5: exclui conta RECUSADA ou BLOQUEADA (função sup_excluir_conta do Painel, que
+ *       confere o administrador, guarda o histórico e só apaga o login se ele for só do app).
  *
  * Prévia (servidor local com --previa): contas e convites DE EXEMPLO na memória deste processo; nada é
  * gravado no Painel. As regiões vêm do banco de verdade.
@@ -124,7 +126,22 @@ module.exports = async (req, res) => {
       }
 
       if (!/^[0-9a-f-]{36}$/i.test(String(b.id || ""))) return json(res, 400, { erro: "id" });
-      const situacao = ["pendente", "liberado", "recusado", "bloqueado"].includes(b.situacao) ? b.situacao : null;
+
+      if (b.acao === "excluir") {
+        if (ehPrevia) {
+          const i = (PREVIA.contas || []).findIndex((x) => x.id === b.id);
+          if (i < 0) return json(res, 404, { erro: "conta", mensagem: "Conta não encontrada (já foi excluída?)." });
+          if (!["recusado", "bloqueado"].includes(PREVIA.contas[i].situacao))
+            return json(res, 400, { erro: "dados", mensagem: "Só conta recusada ou bloqueada pode ser excluída. Recuse ou bloqueie antes." });
+          PREVIA.contas.splice(i, 1);
+          return json(res, 200, { ok: true, login: true, previa: true });
+        }
+        const r = await painel(s.token, "/rest/v1/rpc/sup_excluir_conta", { method: "POST", body: { p_id: b.id } });
+        if (!r || !r.ok) return json(res, 400, { erro: "dados", mensagem: (r && r.mensagem) || "Não consegui excluir a conta." });
+        return json(res, 200, { ok: true, login: !!r.login });
+      }
+
+      const situacao =["pendente", "liberado", "recusado", "bloqueado"].includes(b.situacao) ? b.situacao : null;
       const tipo = ["rca", "supervisor", "gerente"].includes(b.tipo) ? b.tipo : null;
       if (!situacao || !tipo) return json(res, 400, { erro: "dados", mensagem: "Situação ou perfil inválido." });
       const codusur = tipo === "rca" ? Number(b.codusur) || null : null;

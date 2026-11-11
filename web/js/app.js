@@ -937,6 +937,7 @@ function vContas() {
         ${c.situacao !== 'liberado' ? `<button type="button" class="btn peq verde" data-a="adm-decidir" data-v="liberado">Liberar</button>` : `<button type="button" class="btn peq sec" data-a="adm-decidir" data-v="liberado">Salvar</button>`}
         ${c.situacao === 'pendente' ? `<button type="button" class="btn peq sec" data-a="adm-decidir" data-v="recusado">Recusar</button>` : ''}
         ${c.situacao === 'liberado' ? `<button type="button" class="btn peq" data-a="adm-decidir" data-v="bloqueado">Bloquear</button>` : ''}
+        ${c.situacao === 'recusado' || c.situacao === 'bloqueado' ? `<button type="button" class="btn peq perigo" data-a="adm-excluir">Excluir</button>` : ''}
       </div>
     </div>`).join('') : convs.length ? '' : vazio('Nenhuma conta neste filtro.'));
 }
@@ -990,6 +991,32 @@ async function decidirAcesso(card, situacao) {
     toast(situacao === 'liberado' ? 'Acesso liberado.' : situacao === 'recusado' ? 'Pedido recusado.' : 'Acesso bloqueado.');
     await carregarAcessos();
   } catch (e) { toast(e.message || String(e), true); }
+}
+/* 1.11.5: excluir conta recusada ou bloqueada (Júlio, 2026-11-11). Confirma numa folha; o banco (sup_excluir_conta)
+   só aceita do administrador e apaga o login só se ele for só do app (quem usa o Painel ou o SAC continua entrando lá) */
+function confirmarExclusao(id) {
+  const c = ((S.adm.dados && S.adm.dados.contas) || []).find(x => x.id === id);
+  if (!c) return;
+  abrirFolha(`
+    <div class="alca" aria-hidden="true"></div>
+    <div class="folha-cab"><button type="button" class="link" data-a="fechar-folha">Cancelar</button><b>Excluir conta</b><span></span></div>
+    <div class="confirma">
+      <div class="quem-ex"><b>${esc(c.nome || '(sem nome)')}</b><span>${esc(c.email)} · ${esc(c.situacao)}</span></div>
+      <div class="nota">A conta sai do app e a pessoa não entra mais nele. Se o login for só do app, ele também é apagado; quem usa o Painel ou o SAC continua entrando lá. O histórico do pedido fica. <b>Não tem volta.</b> Se a pessoa fizer o Primeiro acesso de novo, aparece em Pendentes.</div>
+      <button type="button" class="btn cheio perigo" data-a="adm-excluir-sim" data-v="${esc(c.id)}">Excluir a conta</button>
+    </div>`, 'Excluir conta');
+}
+async function excluirConta(id, b) {
+  b.setAttribute('aria-busy', 'true');
+  try {
+    const r = await postAcessos({ acao: 'excluir', id });
+    fecharFolha();
+    if (S.adm.dados) S.adm.dados.contas = (S.adm.dados.contas || []).filter(x => x.id !== id);
+    S.adm.assinatura = null;
+    if (S.chave === 'adm') render({ rolar: window.scrollY });
+    toast(r.login ? 'Conta e login excluídos.' : 'Conta do app excluída. O login continua no Painel ou no SAC.');
+    carregarAcessos(true);
+  } catch (e) { b.removeAttribute('aria-busy'); toast(e.message || String(e), true); }
 }
 /* cadastro do gestor (vê todas as regiões) ou do supervisor (só a região dele): folha que sobe, no jeito do iPhone.
    cod: região já escolhida (toque numa região) ou 'g' (veio da página Gestores) */
@@ -1761,6 +1788,8 @@ document.addEventListener('click', e => {
     case 'adm-f': S.adm.filtro = v; break;
     case 'adm-recarregar': carregarAcessos(); return;
     case 'adm-decidir': { const card = b.closest('[data-conta]'); b.setAttribute('aria-busy', 'true'); decidirAcesso(card, v); return; }
+    case 'adm-excluir': { const card = b.closest('[data-conta]'); if (card) confirmarExclusao(card.dataset.conta); return; }
+    case 'adm-excluir-sim': excluirConta(v, b); return;
     case 'novo-sup': abrirCadastro(v || null); return;
     case 'fechar-folha': fecharFolha(); return;
     case 'copiar-convite': copiar(); return;
