@@ -891,19 +891,20 @@ function telaAdm() {
   const gestoresPag = () => `${botao.replace('data-a="novo-sup"', 'data-a="novo-sup" data-v="g"')}
     <div class="nota">O <b>gestor</b> vê <b>todas as regiões</b> ou <b>só os estados que você marcar</b> (ES, BA, RJ e, uma por uma, as regiões sem estado), só para consultar: não cadastra ninguém. Para mudar o que um gestor já liberado vê: <b>Contas › Liberados</b>. Quem tem o SUPERVISOR LUBE liberado no Painel entra como gestor de todas as regiões.</div>
     <div class="h">Gestores <small>${gestores.length} ${gestores.length === 1 ? 'cadastrado' : 'cadastrados'}</small></div>
-    <div class="list">${gestores.length ? gestores.map(g => `<div class="row"><span class="t">${esc(g.nome)}</span><span class="r">${g.st === 'liberado' ? '<span class="pill good">liberado</span>' : '<span class="pill warn">convite enviado</span>'}</span><span class="sub full">vê ${esc(veEstados(g.estados, setores))} · ${esc(g.email)}</span></div>`).join('') : vazio('Nenhum gestor cadastrado pelo app.')}</div>`;
+    <div class="list">${gestores.length ? gestores.map(g => `<div class="row"><span class="t">${esc(g.nome)}</span><span class="r">${g.st === 'liberado' ? '<span class="pill good">liberado</span>' : '<span class="pill warn">pendente</span>'}</span><span class="sub full">vê ${esc(veEstados(g.estados, setores))} · ${esc(g.email)}</span></div>`).join('') : vazio('Nenhum gestor cadastrado pelo app.')}</div>`;
   const regioes = () => `
     ${botao}
     <div class="nota">Cada supervisor vê <b>só a região dele</b>. O gestor vê todas ou só os estados marcados para ele. Por enquanto os RCAs não usam o app.</div>
     <div class="h">Regiões <small>${com} de ${regs.length} com supervisor</small></div>
     <div class="list">${regs.map(r => {
-      const nomes = [...r.contas.map(c => esc(c.nome || c.email)), ...r.convites.map(v => esc(v.nome) + ' (convite enviado)')];
-      const st = r.contas.length ? `<span class="pill good">${r.contas.length > 1 ? r.contas.length + ' liberados' : 'liberado'}</span>` : r.convites.length ? '<span class="pill warn">aguardando</span>' : '<span class="pill">sem supervisor</span>';
+      const nomes = [...r.contas.map(c => esc(c.nome || c.email)), ...r.convites.map(v => esc(v.nome) + ' (pendente)')];
+      const st = r.contas.length ? `<span class="pill good">${r.contas.length > 1 ? r.contas.length + ' liberados' : 'liberado'}</span>` : r.convites.length ? '<span class="pill warn">pendente</span>' : '<span class="pill">sem supervisor</span>';
       return `<button type="button" class="row" data-a="novo-sup" data-v="${r.cod}"><span class="t">${esc(r.nome)}</span><span class="r">${st}</span><span class="sub full">${nomes.length ? nomes.join(' · ') : 'Toque para cadastrar o supervisor desta região.'}</span></button>`;
     }).join('')}</div>`;
   return Object.assign(base, { html: embrulhar('adm', { pags: [['regioes', 'Supervisores', regioes], ['gestores', 'Gestores', gestoresPag], ['contas', `Contas${pend ? `<span class="n">${pend}</span>` : ''}`, vContas]] }) });
 }
 /* 1.11.4: convite enviado e ainda não usado conta como pendente (Júlio: "enviou tá no pendente, aceitou já apareceu");
+   1.11.8: e a etiqueta diz "pendente" em todas as páginas (Júlio: "coloca pra mim esses 3 como pendente no aplicativo");
    quando a pessoa faz o Primeiro acesso com o código, o convite vira "usado" e a conta já nasce liberada */
 const convitesAguardando = AD => ((AD && AD.convites) || []).filter(v => v.situacao === 'aguardando');
 /* 1.11.6: o gestor vê TODAS as regiões ou SÓ OS ESTADOS marcados (Júlio: "a visão do gestor seja geral ou em estados
@@ -979,9 +980,9 @@ function vContas() {
   const regiao = cod => ((setores.find(s => s[0] === cod) || [])[1]) || 'região ' + cod;
   const cartaoConvite = v => `
     <div class="card conta-card">
-      <div class="topo"><div><b>${esc(v.nome || '(sem nome)')}</b><span>${esc(v.email)}</span></div><span class="pill warn">convite enviado</span></div>
+      <div class="topo"><div><b>${esc(v.nome || '(sem nome)')}</b><span>${esc(v.email)}</span></div><span class="pill warn">pendente</span></div>
       <div class="sub">${v.tipo === 'gerente' ? 'Gestor · vê ' + esc(veEstados(v.estados, setores)) : 'Supervisor · ' + esc(regiao(v.codsupervisor))}</div>
-      <div class="sub">convite em ${diaHm(v.criado_em)} · aguardando o Primeiro acesso com o código</div>
+      <div class="sub">convite enviado em ${diaHm(v.criado_em)} · falta o Primeiro acesso com o código</div>
     </div>`;
   return chips('adm-f', AD.filtro, [['pendente', `Pendentes (${n('pendente') + cv.length})`], ['liberado', `Liberados (${n('liberado')})`], ['todos', `Todos (${cs.length + cv.length})`]]) +
     '<div class="faixa info">Convite enviado fica em Pendentes até a pessoa fazer o Primeiro acesso; aí passa sozinho para Liberados. Aqui também ficam as contas criadas pelo Primeiro acesso sem convite. A lista se atualiza sozinha. Quem tem o SUPERVISOR LUBE liberado no Painel entra direto como gestor.</div>' +
@@ -1105,7 +1106,7 @@ function abrirCadastro(cod) {
         <label class="campo" id="s-setor-box"${gestor ? ' hidden' : ''}><span>Região</span><select id="s-setor"><option value="">Escolha a região</option>${(AD.setores || []).map(([c, nm]) => `<option value="${c}"${c === cod ? ' selected' : ''}>${esc(nm)}</option>`).join('')}</select></label>
       </div>
       <div class="fld est-folha" id="s-est-box"${gestor ? '' : ' hidden'}><label>O que o gestor vê</label>${seletorEstados(null, AD.setores)}</div>
-      ${ja.length || conv.length ? `<div class="faixa info">Nesta região: ${[...ja.map(c => esc(c.nome || c.email) + ' (liberado)'), ...conv.map(v => esc(v.nome) + ' (convite enviado)')].join(', ')}.</div>` : ''}
+      ${ja.length || conv.length ? `<div class="faixa info">Nesta região: ${[...ja.map(c => esc(c.nome || c.email) + ' (liberado)'), ...conv.map(v => esc(v.nome) + ' (pendente)')].join(', ')}.</div>` : ''}
       <div class="nota" id="s-nota">${notaPerfil(gestor)}</div>
       <div class="msg bad" id="s-erro" role="alert" hidden></div>
       <button class="btn cheio" type="submit" id="s-salvar">Salvar e gerar o convite</button>
