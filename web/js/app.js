@@ -172,6 +172,22 @@ const fornDe = p => (D.prod[p] && D.prod[p][1]) || 0;
 const fornNome = f => titulo(D.forn[f] || ('Fornecedor ' + f));
 const cliNome = cod => { const c = D && D.CMAP.get(cod); return c ? c.fantasia : 'Cliente ' + cod; };
 const rcaAtivo = cod => { const r = D.RMAP.get(cod); return !!(r && r.ativo); };
+/* 1.11.2 (Júlio: "está mostrando informação diferente nas abas sobre RCA que não vendeu, e quando eu clico pra ver quem
+   são ele não mostra"): uma regra só no Resumo e em Vendas — RCA ativo que teve pedido (146) nos últimos 30 dias e ainda
+   não digitou hoje; domingo não conta. Volta quem é, o último pedido e o faturado do mês, do maior faturado para o menor. */
+function rcasSemPedido() {
+  const H = D.hoje;
+  if (ehRca() || dow(H) === 0) return [];
+  const hoje = new Set(), ult = new Map();
+  for (const o of D.ped) {
+    if (o.d === H) hoje.add(o.rca);
+    else if (o.d >= H - 30 && o.d < H && !(ult.get(o.rca) >= o.d)) ult.set(o.rca, o.d);
+  }
+  const m0 = mesDe(H);
+  return D.ativos.filter(r => ult.has(r.cod) && !hoje.has(r.cod))
+    .map(r => ({ r, ult: ult.get(r.cod), fm: soma(D.nf.filter(o => o.rca === r.cod && o.d >= m0 && o.d <= H), o => o.vl) }))
+    .sort((a, b) => b.fm - a.fm || b.ult - a.ult);
+}
 /* "Inclui R$ X de RCA inativo": o total fecha e a lista mostra só quem está ativo */
 const avisoInativo = (v, oQue) => v > 0.005 ? `<span class="nota">O total inclui ${brl(v)} ${oQue} de RCA inativo (fora da lista).</span>` : '';
 const ehRca = () => D && D.tipo === 'rca';
@@ -364,9 +380,7 @@ function vResumo() {
   const rk = [...pf.entries()].sort((a, b) => b[1] - a[1]); let acc = 0, nA = 0;
   for (const [, v] of rk) { if (acc < .8) nA++; acc += v / (totI || 1); }
   const lider = rk[0];
-  // RCA ativo (vendeu nos últimos 30 dias) que ainda não digitou hoje
-  const semPed = !ehRca() && dow(H) !== 0
-    ? D.rcas.filter(r => r.ativo && D.nf.some(o => o.rca === r.cod && o.d >= H - 30) && !D.ped.some(o => o.d === H && o.rca === r.cod)).length : 0;
+  const semPed = rcasSemPedido().length;   // a mesma regra de Vendas (1.11.2)
   const delta = (v, txt) => v == null ? '' : `<span class="delta ${v >= 0 ? 'up' : 'down'}">${v >= 0 ? '▲' : '▼'} ${pct(Math.abs(v), 0)}</span> ${txt}`;
   const mt = metaDoMes(m0, H, mes.vl), comMeta = mt && !mt.sem, nomeM = MESES_L[dt(H).getUTCMonth()];
   const comparacao = dMes != null ? delta(dMes, 'vs. ' + MESES[dt(a0).getUTCMonth()] + ' no mesmo período') : nf0.format(mes.pos) + ' clientes faturados';
@@ -380,7 +394,7 @@ function vResumo() {
         <span><small>Pedidos</small><b data-cnt="${hj.ped}" data-f="n">${nf0.format(hj.ped)}</b></span>
         <span><small>Clientes</small><b data-cnt="${hj.pos}" data-f="n">${nf0.format(hj.pos)}</b></span>
       </span>
-      ${semPed ? `<span class="alerta">${semPed} ${semPed > 1 ? 'RCAs ativos sem pedido' : 'RCA ativo sem pedido'} hoje</span>` : ''}
+      ${semPed ? `<span class="alerta" data-a="v-sem">${semPed} ${semPed > 1 ? 'RCAs ativos sem pedido' : 'RCA ativo sem pedido'} hoje · ver quem</span>` : ''}
     </button>
     ${comMeta ? `<button type="button" class="mes-card com-meta" data-a="ir" data-v="vendas:periodo">
       <span class="cartao-rot">${ic('cash')}Meta de ${nomeM} <small>${mt.dias ? `${mt.dias} ${mt.dias === 1 ? 'dia útil' : 'dias úteis'} com hoje` : 'mês fechado'}</small>${ic('frente', 'seta')}</span>
@@ -411,22 +425,17 @@ function vVendas() {
   if (V.dia == null || V.dia > H || V.dia < D.ini) V.dia = H;
   if (V.de == null) { const p = periodo(V.q || 'mes'); V.de = p[0]; V.ate = p[1]; }
   const rca = ehRca() ? 0 : V.rca, f = o => !rca || o.rca === rca;
-  const linhasRca = () => D.ativos.map(r => ({
-    r, dd: resumoPed(D.ped.filter(o => o.d === V.dia && o.rca === r.cod)), df: resumoNf(D.nf.filter(o => o.d === V.dia && o.rca === r.cod)),
-    p: resumoNf(D.nf.filter(o => o.d >= V.de && o.d <= V.ate && o.rca === r.cod)),
-  })).sort((a, b) => b.p.vl - a.p.vl);
-
   const dia = () => {
     const pd = resumoPed(D.ped.filter(o => o.d === V.dia && f(o))), pa = resumoPed(D.ped.filter(o => o.d === V.dia - 7 && f(o)));
     const delta = pa.vl ? pd.vl / pa.vl - 1 : 0;
     const dTxt = pa.vl ? `<span class="delta ${delta >= 0 ? 'up' : 'down'}">${delta >= 0 ? '▲' : '▼'} ${pct(Math.abs(delta), 0)}</span> vs. ${diaLongo(V.dia - 7)} (${brlK(pa.vl)})` : (V.dia - 7 >= D.ini ? `sem pedido em ${diaLongo(V.dia - 7)}` : '');
     const parcial = V.dia === H ? ` · até ${hm(D.cargas.pedido)}` : '';
-    const sem = !ehRca() && !rca && V.dia === H && dow(H) !== 0 ? linhasRca().filter(x => x.r.ativo && !x.dd.ped && x.p.vl).length : 0;
+    const sem = !rca && V.dia === H ? rcasSemPedido().length : 0;   // a mesma regra do Resumo (1.11.2)
     return `
     <div class="pilulas">${pilRca('v-rca', rca)}${pilData('v-dia', 'Dia', V.dia)}</div>
     <div class="h">Venda do dia <small>${diaLongo(V.dia)}${parcial}</small></div>
     <div class="kpis k2">${kpi('Digitado', brlK(pd.vl), dTxt, 'hero')}${kpi('Pedidos', nf0.format(pd.ped), 'digitados')}${kpi('Positivação', nf0.format(pd.pos), 'clientes com pedido')}${kpi('Ticket médio', brlK(pd.tk), 'por pedido', 'cheia')}</div>
-    ${sem ? `<button type="button" class="faixa toque" data-a="pag" data-v="rcas">${sem} ${sem > 1 ? 'RCAs ativos ainda sem pedido' : 'RCA ativo ainda sem pedido'} hoje${ic('frente', 'seta')}</button>` : ''}`;
+    ${sem ? `<button type="button" class="faixa toque" data-a="v-sem">${sem} ${sem > 1 ? 'RCAs ativos sem pedido' : 'RCA ativo sem pedido'} hoje · ver quem${ic('frente', 'seta')}</button>` : ''}`;
   };
   const periodoPag = () => {
     const per = resumoNf(D.nf.filter(o => o.d >= V.de && o.d <= V.ate && f(o)));
@@ -449,16 +458,29 @@ function vVendas() {
     })).sort((a, b) => b.f.vl - a.f.vl || b.g.vl - a.g.vl);
     const tot = ls.reduce((a, x) => a + x.f.vl, 0) || 1;
     const rotulo = qr === 'dia' ? diaLongo(ref) : qr === 'semana' ? `semana de ${dm(r1)} a ${dm(ref)}` : `${nomeMes(ref)}${ref === H ? ' até hoje' : ' até ' + dm(ref)}`;
+    // 1.11.2: no Dia de hoje, quem está sem pedido aparece primeiro, na mesma regra do aviso do Resumo e da Venda do dia
+    const semHoje = qr === 'dia' && ref === H && !rca ? rcasSemPedido() : [], semSet = new Set(semHoje.map(x => x.r.cod));
+    const blocoSem = semHoje.length ? `<div class="h">Sem pedido hoje <small>${semHoje.length} ${semHoje.length > 1 ? 'RCAs' : 'RCA'} · até ${hm(D.cargas.pedido)}</small></div>
+      <div class="list" data-lista="v-sem">${limitar(semHoje.map(x => `
+        <button type="button" class="row" data-a="v-rca" data-v="${x.r.cod}">
+          <span class="t">${esc(x.r.nome)} <span class="code">${x.r.cod}</span></span>
+          <span class="r">${brlK(x.fm)}</span>
+          <span class="sub">último pedido ${diaLongo(x.ult)} · há ${H - x.ult} ${H - x.ult === 1 ? 'dia' : 'dias'}</span>
+          <span class="sub r"><span class="pill warn">sem pedido hoje</span></span>
+          <span class="sub full">faturado no mês</span>
+        </button>`), 30, 'v-sem', 'Sem pedido hoje')}</div>
+      <div class="nota">RCA ativo que teve pedido nos últimos 30 dias e ainda não digitou hoje (domingo não conta).</div>` : '';
     const rows = ls.map(({ r, f: fv, g }) => `
       <button type="button" class="row${r.cod === rca ? ' sel' : ''}" data-a="v-rca" data-v="${r.cod === rca ? 0 : r.cod}">
         <span class="t">${esc(r.nome)} <span class="code">${r.cod}</span></span>
         <span class="r">${brlK(fv.vl)}</span>
-        <span class="sub">faturado · digitado ${brlK(g.vl)} em ${g.ped} ${g.ped === 1 ? 'pedido' : 'pedidos'} ${qr === 'dia' && ref === H && !g.ped ? '<span class="pill warn">sem pedido hoje</span>' : ''}</span>
+        <span class="sub">faturado · digitado ${brlK(g.vl)} em ${g.ped} ${g.ped === 1 ? 'pedido' : 'pedidos'} ${semSet.has(r.cod) ? '<span class="pill warn">sem pedido hoje</span>' : ''}</span>
         <span class="sub r"><span class="pill ${fv.vl && fv.mg < .12 ? 'warn' : ''}">margem ${pctM(fv.mg)}</span></span>
         <span class="sub full">${fv.pos} clientes positivados · ${fv.ped} pedidos faturados</span>
         <span class="full">${bar(fv.vl / tot)}</span>
       </button>`);
     return `<div class="pilulas">${chips('v-qr', qr, [['mes', 'Mês'], ['semana', 'Semana'], ['dia', 'Dia']])}${pilData('v-dia', qr === 'dia' ? 'Dia' : 'Até', ref)}</div>
+      ${blocoSem}
       <div class="h">Por RCA <small>${rotulo}</small></div>
       <div class="list" data-lista="v-rcas">${rows.length ? limitar(rows, 5, 'v-rcas', 'Venda por RCA') : vazio('Nenhum RCA ativo no setor.')}</div>
       ${avisoInativo(soma(D.nf.filter(o => na(o) && !rcaAtivo(o.rca)), o => o.vl), 'de faturado')}
@@ -1686,6 +1708,11 @@ document.addEventListener('click', e => {
     case 'v-q': if (v) { S.v.q = v; const [d1, d2] = periodo(v); S.v.de = d1; S.v.ate = d2; } else S.v.q = ''; break;
     case 'v-graf': S.v.graf = v; break;
     case 'v-qr': S.v.qr = v; break;
+    case 'v-sem':   // "ver quem": Vendas › RCAs no Dia de hoje, com a lista de quem está sem pedido no topo (1.11.2)
+      S.v.qr = 'dia'; S.v.dia = D.hoje; S.v.rca = 0;
+      if (S.tab === 'vendas' && !S.pilha.length) { if (S.pag.vendas !== 'rcas') irPagina('rcas'); else render(); }
+      else { S.pag.vendas = 'rcas'; irAba('vendas'); }
+      return;
     case 'c-q': S.c.q = v; break;
     case 'c-cid': S.c.cid = v; S.c.bai = ''; if (naRaiz()) return; break;
     case 'c-bai': S.c.bai = v; if (naRaiz()) return; break;

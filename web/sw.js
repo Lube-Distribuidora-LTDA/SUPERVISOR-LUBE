@@ -5,7 +5,7 @@
  * Os DADOS não passam por aqui: o app guarda o pacote no IndexedDB e a /api nunca é
  * guardada pelo service worker (é por pessoa, com login).
  */
-const CASCA = 'sup-lube-casca-v12';   // v12: 1.11.1 (2026-11-05, o primeiro pacote de telas sem APK: a prova do atualizador)
+const CASCA = 'sup-lube-casca-v13';   // v13: 1.11.2 (2026-11-11, uma regra só para os RCAs sem pedido hoje e a lista de quem é)
 const ARQUIVOS = [
   './', 'index.html', 'css/app.css', 'fonts/fonts.css', 'js/config.js', 'js/acesso.js', 'js/app.js',
   'logo-lube.png', 'logo-lube-mini.png', 'manifest.webmanifest', 'icones/icone-192.png', 'icones/icone-512.png',
