@@ -86,10 +86,11 @@ module.exports = async (req, res) => {
       if (ehPrevia) { exemplo(setores); return json(res, 200, { contas: PREVIA.contas, convites: PREVIA.convites, setores, previa: true }); }
       const contas = await painel(s.token,
         "/rest/v1/sup_usuarios?select=id,email,nome,tipo,codusur,codsupervisor,estados,situacao,criado_em,decidido_em&order=criado_em.desc");
-      // convites: a tabela nasce com a 1.2; sem ela a tela segue com a lista vazia
+      // convites: sem eles a tela segue com a lista vazia, mas a falha fica no log da Vercel. Em 2026-11-11 a coluna nova
+      // (estados) não tinha a leitura liberada (sup_convites tem SELECT por coluna) e o "Pendentes (0)" escondeu o erro.
       const convites = await painel(s.token,
         "/rest/v1/sup_convites?select=email,nome,tipo,codsupervisor,estados,situacao,criado_em,usado_em&situacao=neq.cancelado&order=criado_em.desc")
-        .catch(() => []);
+        .catch((e) => { console.error("acessos: não consegui ler os convites:", e && e.message); return []; });
       const cods = [...new Set(contas.map((c) => c.codusur).filter((v) => v != null))];
       const rcas = cods.length
         ? (await consultar(
