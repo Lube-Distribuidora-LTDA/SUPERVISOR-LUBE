@@ -111,7 +111,7 @@ function erroBanco(res, e) {
     console.error("Conferir variáveis: usuario=" + JSON.stringify(limpo(process.env.SUPABASE_DB_USER)) + " host=" + JSON.stringify(limpo(process.env.SUPABASE_DB_HOST)) +
                   " porta=" + JSON.stringify(limpo(process.env.SUPABASE_DB_PORT)) + " banco=" + JSON.stringify(limpo(process.env.SUPABASE_DB_NAME)) + " senha_com=" + limpo(process.env.SUPABASE_DB_PASSWORD).length + "_caracteres");
   }
-  json(res, 502, { erro: "falha_no_banco", mensagem: "Não consegui ler o DATA WAREHOUSE agora. Tente de novo em instantes; persistindo, avise o TI.", detalhe: String(e && e.message ? e.message : e) });
+  json(res, 502, { erro: "falha_no_banco", mensagem: "Não consegui ler o DATA WAREHOUSE agora. Tente de novo em instantes; persistindo, avise o Suporte comercial.", detalhe: String(e && e.message ? e.message : e) });
 }
 
 module.exports = { consultar, faltandoVariaveis, json, semConfiguracao, erroBanco };

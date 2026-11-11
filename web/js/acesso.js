@@ -20,9 +20,9 @@
   var CHAVE_SESSAO = "sup-lube-sessao", CHAVE_CONTA = "sup-lube-conta", CHAVE_EMAIL = "sup-lube-email";
   var RE_EMAIL = /^[^\s@<>(),;:"\[\]\\]+@[^\s@<>(),;:"\[\]\\]+\.[a-z]{2,}$/i;
   var MSG = {
-    pendente: "Seu pedido de acesso está com o TI. Assim que for liberado, é só entrar.",
-    recusado: "Seu pedido de acesso ao app foi recusado. Fale com o TI (cpd@lube.com.br).",
-    bloqueado: "Seu acesso ao app está bloqueado. Fale com o TI (cpd@lube.com.br).",
+    pendente: "Seu pedido de acesso está com o Suporte comercial. Assim que for liberado, é só entrar.",
+    recusado: "Seu pedido de acesso ao app foi recusado. Fale com o Suporte comercial (julio.cesar@lube.com.br).",
+    bloqueado: "Seu acesso ao app está bloqueado. Fale com o Suporte comercial (julio.cesar@lube.com.br).",
   };
   var $ = function (s) { return document.querySelector(s); };
   var conta = null;
@@ -59,7 +59,7 @@
     if (/user_already_exists|already registered/i.test(cod + m)) return "JA_EXISTE";
     if (/weak_password|at least/i.test(cod + m)) return "A senha precisa ter pelo menos 8 caracteres.";
     if (/email_address_invalid|invalid email/i.test(cod + m)) return "Este e-mail não é válido.";
-    if (/Acesso restrito/i.test(m)) return "Este e-mail não pode ser usado aqui. Fale com o TI.";
+    if (/Acesso restrito/i.test(m)) return "Este e-mail não pode ser usado aqui. Fale com o Suporte comercial.";
     if (status === 429 || /rate limit/i.test(m)) return "Muitas tentativas seguidas. Espere um minuto e tente de novo.";
     return "Não consegui falar com o login agora" + (m ? ": " + m : ".");
   }
@@ -161,11 +161,11 @@
     if (c && c.situacao === "sem_cadastro") {
       mostrarLogin("pedir");
       $("#pedir-texto").textContent = c.corporativo
-        ? "Sua conta é do Painel Lube e ainda não tem o Supervisor Lube liberado. Se você é RCA ou supervisor, peça abaixo; gerente pede ao TI para liberar o sistema no Painel."
-        : "Sua conta já existe (do SAC), mas ainda não tem acesso a este app. Peça abaixo — o TI libera.";
+        ? "Sua conta é do Painel Lube e ainda não tem o Supervisor Lube liberado. Se você é RCA ou supervisor, peça abaixo; gerente pede ao Suporte comercial para liberar o sistema no Painel."
+        : "Sua conta já existe (do SAC), mas ainda não tem acesso a este app. Peça abaixo — o Suporte comercial libera.";
       return;
     }
-    var msg = (c && MSG[c.situacao]) || "Seu acesso ao app não está liberado. Fale com o TI.";
+    var msg = (c && MSG[c.situacao]) || "Seu acesso ao app não está liberado. Fale com o Suporte comercial.";
     return sair(true).then(function () { mostrarLogin("entrar"); if (c && c.situacao === "pendente") mostrarOk(texto(msg)); else erro(texto(msg)); });
   }
 
@@ -206,7 +206,7 @@
         var pendente = function () {
           gravar(CHAVE_SESSAO, null);
           mostrarOk((convite ? "<b>Conta criada, mas o código do convite não conferiu</b> (ou já foi usado).<br>" : "<b>Pedido enviado.</b><br>") +
-            "O TI confere os seus dados e libera o acesso. Depois é só entrar com o e-mail <b>" + texto(email) + "</b> e a senha que você criou.");
+            "O Suporte comercial confere os seus dados e libera o acesso. Depois é só entrar com o e-mail <b>" + texto(email) + "</b> e a senha que você criou.");
         };
         // com convite (1.2), a conta já nasce liberada: entra direto, sem passar pela tela de entrada
         if (!convite || !j || !j.access_token) { pendente(); return; }
@@ -255,7 +255,7 @@
     $("#c-tipo").addEventListener("change", function () { codBox("#c-tipo", "#c-cod-box"); });
     $("#p-tipo").addEventListener("change", function () { codBox("#p-tipo", "#p-cod-box"); });
     $("#btn-esqueci").addEventListener("click", function () {
-      erro("Para trocar a senha, fale com o TI: <b>cpd@lube.com.br</b>. A troca é feita no painel administrativo.");
+      erro("Para trocar a senha, fale com o Suporte comercial: <b>julio.cesar@lube.com.br</b>. A troca é feita no painel administrativo.");
     });
     document.addEventListener("click", function (ev) {
       var a = ev.target.closest("[data-acao='sair']");

@@ -75,7 +75,7 @@ module.exports = async (req, res) => {
       rca = Number(c.codusur);
       const r = await consultar("SELECT codsupervisor, nome FROM core.dim_rca WHERE codusur = $1", [rca]);
       if (!r.rows.length || r.rows[0].codsupervisor == null) {
-        return json(res, 404, { erro: "rca", mensagem: "O RCA " + rca + " não está no cadastro do WinThor carregado. Fale com o TI." });
+        return json(res, 404, { erro: "rca", mensagem: "O RCA " + rca + " não está no cadastro do WinThor carregado. Fale com o Suporte comercial." });
       }
       escopo = "S" + r.rows[0].codsupervisor;
       rca = { cod: rca, nome: r.rows[0].nome };

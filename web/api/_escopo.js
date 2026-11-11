@@ -20,7 +20,7 @@ async function escopoDaConta(c, pedido) {
   const cod = Number(c.codusur);
   const r = await consultar("SELECT codsupervisor, nome FROM core.dim_rca WHERE codusur = $1", [cod]);
   if (!r.rows.length || r.rows[0].codsupervisor == null) {
-    return { status: 404, erro: "rca", mensagem: "O RCA " + cod + " não está no cadastro do WinThor carregado. Fale com o TI." };
+    return { status: 404, erro: "rca", mensagem: "O RCA " + cod + " não está no cadastro do WinThor carregado. Fale com o Suporte comercial." };
   }
   return { escopo: "S" + r.rows[0].codsupervisor, rca: { cod, nome: r.rows[0].nome } };
 }

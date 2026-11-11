@@ -52,13 +52,13 @@ async function sessao(req) {
   if (!r.ok) throw new Error("sup_meu_acesso respondeu " + r.status);
   const conta = await r.json();
   if (!conta || conta.situacao !== "liberado") {
-    return { ok: false, status: 403, mensagem: "Seu acesso ao app não está liberado. Fale com o TI." };
+    return { ok: false, status: 403, mensagem: "Seu acesso ao app não está liberado. Fale com o Suporte comercial." };
   }
   if (conta.tipo === "supervisor" && !conta.codsupervisor) {
-    return { ok: false, status: 403, mensagem: "Sua conta ainda não está ligada a um setor. Fale com o TI." };
+    return { ok: false, status: 403, mensagem: "Sua conta ainda não está ligada a um setor. Fale com o Suporte comercial." };
   }
   if (conta.tipo === "rca" && !conta.codusur) {
-    return { ok: false, status: 403, mensagem: "Sua conta ainda não está ligada a um código de RCA. Fale com o TI." };
+    return { ok: false, status: 403, mensagem: "Sua conta ainda não está ligada a um código de RCA. Fale com o Suporte comercial." };
   }
   return { ok: true, token, userId: usuario.id, email: String(usuario.email || "").toLowerCase(), conta };
 }

@@ -75,17 +75,17 @@ window.SUP_ABERTURA = (function () {
         <div class="fld" hidden><label for="c-tipo">Você é</label>
           <select id="c-tipo"><option value="supervisor">Supervisor</option></select></div>
         <div class="fld" id="c-cod-box" hidden><label for="c-cod">Seu código de RCA no WinThor</label><input id="c-cod" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off"></div>
-        <div class="fld"><label for="c-convite">Código do convite</label><input id="c-convite" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code" placeholder="6 números"><small>Veio na mensagem do TI. Com ele você já entra liberado.</small></div>
+        <div class="fld"><label for="c-convite">Código do convite</label><input id="c-convite" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code" placeholder="6 números"><small>Veio na mensagem do Suporte comercial. Com ele você já entra liberado.</small></div>
         <button class="btn cheio" type="submit" id="btn-cadastrar">Criar minha conta</button>
-        <p class="sub" style="margin:0;text-align:center">Para supervisores da Lube. Sem o código, o TI confere e libera.</p>
+        <p class="sub" style="margin:0;text-align:center">Para supervisores da Lube. Sem o código, o Suporte comercial confere e libera.</p>
       </form>
 
       <form id="form-pedir" data-form="pedir" novalidate hidden>
-        <p class="sub" style="margin:0" id="pedir-texto">Sua conta já existe, mas ainda não tem acesso ao app. Peça abaixo — o TI libera.</p>
+        <p class="sub" style="margin:0" id="pedir-texto">Sua conta já existe, mas ainda não tem acesso ao app. Peça abaixo — o Suporte comercial libera.</p>
         <div class="fld" hidden><label for="p-tipo">Você é</label>
           <select id="p-tipo"><option value="supervisor">Supervisor</option></select></div>
         <div class="fld" id="p-cod-box" hidden><label for="p-cod">Seu código de RCA no WinThor</label><input id="p-cod" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off"></div>
-        <div class="fld"><label for="p-convite">Código do convite</label><input id="p-convite" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code" placeholder="6 números"><small>Se o TI mandou o convite, você entra na hora.</small></div>
+        <div class="fld"><label for="p-convite">Código do convite</label><input id="p-convite" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code" placeholder="6 números"><small>Se o Suporte comercial mandou o convite, você entra na hora.</small></div>
         <button class="btn cheio" type="submit" id="btn-pedir">Pedir acesso</button>
         <button class="link" type="button" data-acao="sair">Entrar com outra conta</button>
       </form>
@@ -98,7 +98,7 @@ window.SUP_ABERTURA = (function () {
 
       <div class="msg bad" id="gate-erro" role="alert" hidden></div>
     </div>
-    <div class="rodape">Lube Distribuidora · dúvidas com o TI (cpd@lube.com.br)</div>
+    <div class="rodape">Lube Distribuidora · dúvidas com o Suporte comercial (julio.cesar@lube.com.br)</div>
   </div>
 </div>
 
