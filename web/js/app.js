@@ -884,8 +884,8 @@ function telaAdm() {
     convites: cv.filter(v => v.codsupervisor === cod && v.situacao === 'aguardando'),
   }));
   const com = regs.filter(r => r.contas.length || r.convites.length).length;
-  const pend = cs.filter(c => c.situacao === 'pendente').length;
-  const gestores = [...cs.filter(c => c.tipo === 'gerente' && c.situacao === 'liberado').map(c => ({ nome: c.nome || c.email, email: c.email, st: 'liberado' })),
+  const pend = nPendentes(AD.dados);
+  const gestores =[...cs.filter(c => c.tipo === 'gerente' && c.situacao === 'liberado').map(c => ({ nome: c.nome || c.email, email: c.email, st: 'liberado' })),
     ...cv.filter(v => v.tipo === 'gerente' && v.situacao === 'aguardando').map(v => ({ nome: v.nome, email: v.email, st: 'aguardando' }))];
   const botao = `<button type="button" class="btn cheio com-ic" data-a="novo-sup">${ic('mais')}Cadastrar gestor ou supervisor</button>`;
   const gestoresPag = () => `${botao.replace('data-a="novo-sup"', 'data-a="novo-sup" data-v="g"')}
@@ -903,13 +903,26 @@ function telaAdm() {
     }).join('')}</div>`;
   return Object.assign(base, { html: embrulhar('adm', { pags: [['regioes', 'Supervisores', regioes], ['gestores', 'Gestores', gestoresPag], ['contas', `Contas${pend ? `<span class="n">${pend}</span>` : ''}`, vContas]] }) });
 }
+/* 1.11.4: convite enviado e ainda não usado conta como pendente (Júlio: "enviou tá no pendente, aceitou já apareceu");
+   quando a pessoa faz o Primeiro acesso com o código, o convite vira "usado" e a conta já nasce liberada */
+const convitesAguardando = AD => ((AD && AD.convites) || []).filter(v => v.situacao === 'aguardando');
+const nPendentes = AD => ((AD && AD.contas) || []).filter(c => c.situacao === 'pendente').length + convitesAguardando(AD).length;
 function vContas() {
-  const AD = S.adm, cs = AD.dados.contas || [], setores = AD.dados.setores || [];
+  const AD = S.adm, cs = AD.dados.contas || [], setores = AD.dados.setores || [], cv = convitesAguardando(AD.dados);
   const n = s => cs.filter(c => c.situacao === s).length;
   const lista = cs.filter(c => AD.filtro === 'todos' || c.situacao === AD.filtro);
+  const convs = AD.filtro === 'liberado' ? [] : cv;
   const sit = { pendente: 'warn', liberado: 'good', recusado: 'bad', bloqueado: 'bad' };
-  return chips('adm-f', AD.filtro, [['pendente', `Pendentes (${n('pendente')})`], ['liberado', `Liberados (${n('liberado')})`], ['todos', `Todos (${cs.length})`]]) +
-    '<div class="faixa info">Aqui ficam as contas criadas pelo Primeiro acesso. Quem tem o SUPERVISOR LUBE liberado no Painel entra direto como gestor.</div>' +
+  const regiao = cod => ((setores.find(s => s[0] === cod) || [])[1]) || 'região ' + cod;
+  const cartaoConvite = v => `
+    <div class="card conta-card">
+      <div class="topo"><div><b>${esc(v.nome || '(sem nome)')}</b><span>${esc(v.email)}</span></div><span class="pill warn">convite enviado</span></div>
+      <div class="sub">${v.tipo === 'gerente' ? 'Gestor (vê todas as regiões)' : 'Supervisor · ' + esc(regiao(v.codsupervisor))}</div>
+      <div class="sub">convite em ${diaHm(v.criado_em)} · aguardando o Primeiro acesso com o código</div>
+    </div>`;
+  return chips('adm-f', AD.filtro, [['pendente', `Pendentes (${n('pendente') + cv.length})`], ['liberado', `Liberados (${n('liberado')})`], ['todos', `Todos (${cs.length + cv.length})`]]) +
+    '<div class="faixa info">Convite enviado fica em Pendentes até a pessoa fazer o Primeiro acesso; aí passa sozinho para Liberados. Aqui também ficam as contas criadas pelo Primeiro acesso sem convite. A lista se atualiza sozinha. Quem tem o SUPERVISOR LUBE liberado no Painel entra direto como gestor.</div>' +
+    convs.map(cartaoConvite).join('') +
     (lista.length ? lista.map(c => `
     <div class="card conta-card" data-conta="${c.id}">
       <div class="topo"><div><b>${esc(c.nome || '(sem nome)')}</b><span>${esc(c.email)}</span></div><span class="pill ${sit[c.situacao] || ''}">${esc(c.situacao)}</span></div>
@@ -925,19 +938,44 @@ function vContas() {
         ${c.situacao === 'pendente' ? `<button type="button" class="btn peq sec" data-a="adm-decidir" data-v="recusado">Recusar</button>` : ''}
         ${c.situacao === 'liberado' ? `<button type="button" class="btn peq" data-a="adm-decidir" data-v="bloqueado">Bloquear</button>` : ''}
       </div>
-    </div>`).join('') : vazio('Nenhuma conta neste filtro.'));
+    </div>`).join('') : convs.length ? '' : vazio('Nenhuma conta neste filtro.'));
 }
-async function carregarAcessos() {
-  S.adm.carregando = true; S.adm.erro = ''; if (S.chave === 'adm') render();
+/* silencioso (1.11.4, a leitura de 5 em 5 s da tela aberta): sem esqueleto nem erro na tela; só redesenha se mudou */
+async function carregarAcessos(silencioso) {
+  if (silencioso && (S.adm.carregando || S.adm.lendo)) return;
+  if (!silencioso) { S.adm.carregando = true; S.adm.erro = ''; if (S.chave === 'adm') render(); }
+  S.adm.lendo = true;
   try {
     const t = await A.token();
     const r = await fetch((CFG.api || '') + '/api/acessos', { headers: { Authorization: 'Bearer ' + t }, cache: 'no-store' });
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j.mensagem || 'Não consegui ler os acessos (' + r.status + ').');
-    S.adm.dados = j;
-  } catch (e) { S.adm.erro = e.message || String(e); }
-  S.adm.carregando = false; if (S.chave === 'adm') render();
+    const assinatura = JSON.stringify([j.contas, j.convites, j.setores]);
+    const mudou = assinatura !== S.adm.assinatura;
+    S.adm.assinatura = assinatura; S.adm.dados = j;
+    if (silencioso && (mudou || S.adm.pendente)) redesenharAcessos();
+  } catch (e) { if (!silencioso) S.adm.erro = e.message || String(e); }
+  S.adm.lendo = false;
+  if (!silencioso) { S.adm.carregando = false; if (S.chave === 'adm') render(); }
 }
+/* nunca redesenha por cima de quem está mexendo: campo com foco, folha aberta, animação ou um cartão de conta com perfil
+   ou região trocados e ainda não salvos (fica para a próxima leitura) */
+function redesenharAcessos() {
+  if (S.chave !== 'adm') return;
+  const foco = document.activeElement;
+  // lista sem opção marcada no HTML abre na primeira ("Escolha a região"): isso não é edição
+  const inicial = s => Math.max(0, [...s.options].findIndex(o => o.defaultSelected));
+  const editado = [...document.querySelectorAll('.conta-card [data-campo]')].some(el => el.tagName === 'SELECT'
+    ? el.selectedIndex !== inicial(el) : el.value !== el.defaultValue);
+  if ((foco && /^(INPUT|SELECT|TEXTAREA)$/.test(foco.tagName)) || !$('#folha').hidden || $('#view').classList.contains('em-anim') || editado) { S.adm.pendente = true; return; }
+  S.adm.pendente = false;
+  render({ rolar: window.scrollY });
+}
+const ADM_VIVO_MS = 5e3;
+setInterval(() => {
+  if (S.chave !== 'adm' || !conta || !conta.admin || document.visibilityState !== 'visible') return;
+  carregarAcessos(true);
+}, ADM_VIVO_MS);
 async function postAcessos(corpo) {
   const t = await A.token();
   const r = await fetch((CFG.api || '') + '/api/acessos', { method: 'POST', headers: { Authorization: 'Bearer ' + t, 'Content-Type': 'application/json' }, body: JSON.stringify(corpo) });
@@ -1411,7 +1449,7 @@ const ICM = {
 };
 function abrirMenu() {
   const ios = !CFG.nativo && /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.matchMedia('(display-mode: standalone)').matches && !navigator.standalone;
-  const pend = S.adm.dados ? (S.adm.dados.contas || []).filter(c => c.situacao === 'pendente').length : null;
+  const pend = S.adm.dados ? nPendentes(S.adm.dados) : null;
   abrirFolha(`
     <div class="alca" aria-hidden="true"></div>
     <div class="quem"><span class="conta-btn">${esc(iniciais(conta.nome || conta.email))}</span><div><b>${esc(conta.nome || conta.email)}</b><span>${esc(conta.email || '')} · ${esc(perfilRotulo())}</span></div></div>
@@ -1727,7 +1765,7 @@ document.addEventListener('click', e => {
     case 'fechar-folha': fecharFolha(); return;
     case 'copiar-convite': copiar(); return;
     case 'm-atualizar': fecharFolha(); if (D) atualizarAgora(); else { toast('Conferindo se há dados novos…'); carregarTudo(); } return;
-    case 'm-acessos': fecharFolha(); S.adm.erro = ''; empurrar({ t: 'adm', titulo: 'Acessos' }); if (!S.adm.dados) carregarAcessos(); return;
+    case 'm-acessos': fecharFolha(); S.adm.erro = ''; empurrar({ t: 'adm', titulo: 'Acessos' }); carregarAcessos(!!S.adm.dados); return;
     case 'm-instalar': fecharFolha(); if (instalar) { instalar.prompt(); instalar = null; } return;
     case 'm-sair': fecharFolha(); IDB.limpar(); D = null; R = null; conta = null; S.escopo = null; S.pilha = []; S.adm.dados = null; A.sair(); return;
     case 'baixar-app': fecharAlertaVersao(); fecharFolha(); if (appNovo) location.href = CFG.site + appNovo.apk; return;
@@ -1917,6 +1955,8 @@ function puxaSoltar(dy) {
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && conta && Date.now() - ultimaConferencia > 5 * 60e3) carregarTudo();
   else if (document.visibilityState === 'visible' && conta && D) buscarHoje().catch(() => { /* tenta de novo em 15 s */ });
+  // voltou para o app com a tela Acessos aberta: lê na hora (1.11.4)
+  if (document.visibilityState === 'visible' && conta && conta.admin && S.chave === 'adm') carregarAcessos(true);
 });
 // a fonte dos números chega depois da primeira tela e a largura muda ao girar: o encaixe mede de novo
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => encaixar($('#view')));
