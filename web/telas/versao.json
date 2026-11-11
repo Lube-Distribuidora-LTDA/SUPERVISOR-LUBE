@@ -1,10 +1,10 @@
 {
-  "telas": 6,
-  "versao": "1.11.5 · 2026-11-11",
-  "url": "/telas/telas-6.zip",
-  "sha256": "4fa1f9734502ae4e48c1d2709598616ca1b1cff746a65308c66822d7b7c2d517",
+  "telas": 7,
+  "versao": "1.11.6 · 2026-11-11",
+  "url": "/telas/telas-7.zip",
+  "sha256": "200b9a4535e8359c0abfc10532182b53a07b8daf4229ca847bbccada22e11df8",
   "minNativo": 12,
   "arquivos": 29,
-  "bytes": 1337207,
+  "bytes": 1339037,
   "nota": "Gerado pelo app/gerar-telas.js. O app nativo baixa o pacote quando 'telas' for maior que o dele e o versionCode do APK for pelo menos minNativo."
 }

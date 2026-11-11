@@ -562,3 +562,10 @@ mark { background: var(--gold-soft); color: var(--gold-strong); border-radius: 3
 .folha .confirma { display: flex; flex-direction: column; gap: 12px; }
 .folha .confirma .quem-ex b { display: block; font: 700 16px var(--f-body); overflow-wrap: anywhere; }
 .folha .confirma .quem-ex span { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+
+/* 1.11.6: o que o gestor vê (Todas / ES / BA / RJ / Outras) — no cartão da conta e no cadastro */
+.est-box { display: flex; flex-direction: column; gap: 6px; }
+.est-box .chip small { font: 700 10.5px var(--f-num); opacity: .7; margin-left: 2px; }
+.est-box .est-quais { line-height: 1.45; }
+.est-folha { margin: 14px 2px 0; }
+.conta-card > .fld[data-so="gerente"] { flex: none; }

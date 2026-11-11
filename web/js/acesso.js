@@ -37,10 +37,15 @@
       if (q) sessionStorage.setItem("sup-lube-previa", q);
       PREVIA = sessionStorage.getItem("sup-lube-previa");
     } catch (e) { PREVIA = null; }
-    if (PREVIA && !/^(gerente|supervisor-\d+|rca-\d+)$/.test(PREVIA)) PREVIA = null;
+    if (PREVIA && !/^(gerente|supervisor-\d+|rca-\d+|gestor-(ES|BA|RJ|OUTRAS)(-(ES|BA|RJ|OUTRAS))*)$/.test(PREVIA)) PREVIA = null;
   }
   function contaPrevia() {
     if (PREVIA === "gerente") return { situacao: "liberado", tipo: "gerente", nome: "Prévia (gerente)", email: "previa@local", admin: true };
+    // 1.11.6: ?previa=gestor-ES-BA = gestor que só vê os estados escolhidos (não administrador)
+    if (/^gestor-/.test(PREVIA)) {
+      var est = PREVIA.slice(7).split("-");
+      return { situacao: "liberado", tipo: "gerente", nome: "Prévia (gestor " + est.join(", ") + ")", email: "previa-" + est.join("-").toLowerCase() + "@local", admin: false, estados: est };
+    }
     var m = /^(supervisor|rca)-(\d+)$/.exec(PREVIA);
     return m[1] === "supervisor"
       ? { situacao: "liberado", tipo: "supervisor", nome: "Prévia (supervisor)", email: "previa@local", codsupervisor: Number(m[2]), admin: false }

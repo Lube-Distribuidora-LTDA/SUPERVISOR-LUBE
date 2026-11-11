@@ -24,6 +24,8 @@ const zlib = require("zlib");
 const { consultar, json, semConfiguracao, erroBanco } = require("./_db.js");
 const { sessao } = require("./_sessao.js");
 const { cors, ORIGENS_DO_APP } = require("./_cors.js");
+const { escopoDaConta, sufixoDaVersao } = require("./_escopo.js");
+const { filtrarResumo } = require("./_estados.js");
 
 /* o RCA só leva as linhas dele (os índices seguem a ordem montada em supervisor.pacote_setor) */
 function filtrarRca(p, codusur, nome) {
@@ -62,30 +64,18 @@ module.exports = async (req, res) => {
   catch (e) { return json(res, 502, { erro: "login_indisponivel", mensagem: "Não consegui conferir o seu login agora. Tente de novo em instantes." }); }
   if (!s.ok) return json(res, s.status, { erro: "acesso", mensagem: s.mensagem });
 
-  const c = s.conta;
-  const pedido = String((req.query && req.query.escopo) || "").toUpperCase();
-  let escopo, rca = null;
   try {
-    if (c.tipo === "gerente") {
-      escopo = /^(G|S[0-9]{1,6})$/.test(pedido) ? pedido : "G";
-    } else if (c.tipo === "supervisor") {
-      escopo = "S" + Number(c.codsupervisor);
-      if (pedido && pedido !== escopo) return json(res, 403, { erro: "acesso", mensagem: "Você só vê o seu setor." });
-    } else {
-      rca = Number(c.codusur);
-      const r = await consultar("SELECT codsupervisor, nome FROM core.dim_rca WHERE codusur = $1", [rca]);
-      if (!r.rows.length || r.rows[0].codsupervisor == null) {
-        return json(res, 404, { erro: "rca", mensagem: "O RCA " + rca + " não está no cadastro do WinThor carregado. Fale com o Suporte comercial." });
-      }
-      escopo = "S" + r.rows[0].codsupervisor;
-      rca = { cod: rca, nome: r.rows[0].nome };
-    }
+    // 1.11.6: a regra do perfil mora num lugar só (_escopo.js), a mesma do ao vivo; o gestor com estados escolhidos
+    // leva o resumo só com as regiões deles e não abre setor de outro estado
+    const alvo = await escopoDaConta(s.conta, req.query && req.query.escopo);
+    if (alvo.status) return json(res, alvo.status, { erro: alvo.erro, mensagem: alvo.mensagem });
+    const escopo = alvo.escopo, rca = alvo.rca, estados = alvo.estados;
 
     const limpa = (v) => String(v || "").replace(/^W\//, "").replace(/"/g, "");
     const versaoPedida = limpa(req.headers["x-versao"]);
     const doApp = ORIGENS_DO_APP.has(String(req.headers.origin || ""));
     const etagPedido = versaoPedida || (doApp ? "" : limpa(req.headers["if-none-match"]));
-    const sufixo = rca ? "-R" + rca.cod : "";
+    const sufixo = sufixoDaVersao(alvo);
     const q = await consultar(
       `SELECT versao, gerado_em, CASE WHEN versao || $2 = $3 THEN NULL ELSE payload_gz END AS payload_gz
          FROM supervisor.pacote WHERE escopo = $1`, [escopo, sufixo, etagPedido]);
@@ -110,6 +100,9 @@ module.exports = async (req, res) => {
     if (rca) {
       const p = JSON.parse(zlib.gunzipSync(corpo).toString("utf8"));
       corpo = zlib.gzipSync(Buffer.from(JSON.stringify(filtrarRca(p, rca.cod, rca.nome)), "utf8"), { level: 6 });
+    } else if (estados && escopo === "G") {
+      const p = JSON.parse(zlib.gunzipSync(corpo).toString("utf8"));
+      corpo = zlib.gzipSync(Buffer.from(JSON.stringify(filtrarResumo(p, estados)), "utf8"), { level: 6 });
     }
     res.statusCode = 200;
     res.setHeader("Content-Type", "application/json; charset=utf-8");

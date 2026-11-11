@@ -13,6 +13,8 @@
  *       libera na hora) e devolve o código para o administrador mandar na mensagem.
  * POST  { acao: 'excluir', id } — 1.11.5: exclui conta RECUSADA ou BLOQUEADA (função sup_excluir_conta do Painel, que
  *       confere o administrador, guarda o histórico e só apaga o login se ele for só do app).
+ * 1.11.6: o gestor pode ter ESTADOS ({ estados: ['ES', 'BA'] }, no convite e na decisão): vê só as regiões desses estados
+ *       (_estados.js). Sem estados (ou vazio) = todas as regiões, como sempre foi.
  *
  * Prévia (servidor local com --previa): contas e convites DE EXEMPLO na memória deste processo; nada é
  * gravado no Painel. As regiões vêm do banco de verdade.
@@ -22,6 +24,7 @@ const crypto = require("crypto");
 const { consultar, json, semConfiguracao, erroBanco } = require("./_db.js");
 const { sessao, painel } = require("./_sessao.js");
 const { cors } = require("./_cors.js");
+const { limpar: limparEstados } = require("./_estados.js");
 
 const RE_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -51,17 +54,19 @@ function exemplo(setores) {
   PREVIA.contas = [
     { id: "00000000-0000-4000-8000-000000000001", email: "exemplo.ana@lube.com.br", nome: "Ana Exemplo", tipo: "supervisor", codusur: null, codsupervisor: a ? a[0] : null, situacao: "liberado", criado_em: agora(), decidido_em: agora() },
     { id: "00000000-0000-4000-8000-000000000002", email: "exemplo.bruno@lube.com.br", nome: "Bruno Exemplo", tipo: "supervisor", codusur: null, codsupervisor: null, situacao: "pendente", criado_em: agora(), decidido_em: null },
+    { id: "00000000-0000-4000-8000-000000000003", email: "exemplo.diego@lube.com.br", nome: "Diego Exemplo", tipo: "gerente", codusur: null, codsupervisor: null, estados: ["RJ"], situacao: "liberado", criado_em: agora(), decidido_em: agora() },
   ];
   if (b) PREVIA.convites.push({ email: "exemplo.carla@lube.com.br", nome: "Carla Exemplo", tipo: "supervisor", codsupervisor: b[0], situacao: "aguardando", criado_em: agora() });
 }
 
 async function convidarPrevia(b, setores) {
   const email = String(b.email || "").trim().toLowerCase(), tipo = b.tipo, cod = Number(b.codsupervisor) || null;
+  const estados = tipo === "gerente" ? b.estados || null : null;
   if (tipo === "supervisor" && !setores.some((s) => s[0] === cod)) return { status: 400, corpo: { erro: "dados", mensagem: "Região inválida." } };
   const conta = PREVIA.contas.find((c) => c.email === email);
-  if (conta) Object.assign(conta, { tipo, codsupervisor: cod, codusur: null, situacao: "liberado", decidido_em: agora() });
+  if (conta) Object.assign(conta, { tipo, codsupervisor: cod, codusur: null, estados, situacao: "liberado", decidido_em: agora() });
   PREVIA.convites = PREVIA.convites.filter((v) => v.email !== email);
-  PREVIA.convites.unshift({ email, nome: String(b.nome).trim(), tipo, codsupervisor: cod, situacao: conta ? "usado" : "aguardando", criado_em: agora() });
+  PREVIA.convites.unshift({ email, nome: String(b.nome).trim(), tipo, codsupervisor: cod, estados, situacao: conta ? "usado" : "aguardando", criado_em: agora() });
   return { status: 200, corpo: { ok: true, liberou: !!conta, codigo: conta ? null : String(crypto.randomInt(0, 1e6)).padStart(6, "0"), previa: true } };
 }
 
@@ -80,10 +85,10 @@ module.exports = async (req, res) => {
       const setores = await regioes();
       if (ehPrevia) { exemplo(setores); return json(res, 200, { contas: PREVIA.contas, convites: PREVIA.convites, setores, previa: true }); }
       const contas = await painel(s.token,
-        "/rest/v1/sup_usuarios?select=id,email,nome,tipo,codusur,codsupervisor,situacao,criado_em,decidido_em&order=criado_em.desc");
+        "/rest/v1/sup_usuarios?select=id,email,nome,tipo,codusur,codsupervisor,estados,situacao,criado_em,decidido_em&order=criado_em.desc");
       // convites: a tabela nasce com a 1.2; sem ela a tela segue com a lista vazia
       const convites = await painel(s.token,
-        "/rest/v1/sup_convites?select=email,nome,tipo,codsupervisor,situacao,criado_em,usado_em&situacao=neq.cancelado&order=criado_em.desc")
+        "/rest/v1/sup_convites?select=email,nome,tipo,codsupervisor,estados,situacao,criado_em,usado_em&situacao=neq.cancelado&order=criado_em.desc")
         .catch(() => []);
       const cods = [...new Set(contas.map((c) => c.codusur).filter((v) => v != null))];
       const rcas = cods.length
@@ -113,14 +118,15 @@ module.exports = async (req, res) => {
         const tipo = b.tipo === "gerente" ? "gerente" : "supervisor";
         const email = String(b.email || "").trim().toLowerCase(), nome = String(b.nome || "").trim();
         const cod = tipo === "supervisor" ? Number(b.codsupervisor) || null : null;
+        const estados = tipo === "gerente" ? limparEstados(b.estados) : null;     // null = todas as regiões
         if (nome.length < 3 || nome.length > 120) return json(res, 400, { erro: "dados", mensagem: "Informe o nome completo." });
         if (!RE_EMAIL.test(email) || email.length > 200) return json(res, 400, { erro: "dados", mensagem: "Informe um e-mail válido." });
         if (tipo === "supervisor" && !cod) return json(res, 400, { erro: "dados", mensagem: "Escolha a região do supervisor." });
         const setores = await regioes();
-        if (ehPrevia) { exemplo(setores); const r = await convidarPrevia({ email, nome, tipo, codsupervisor: cod }, setores); return json(res, r.status, r.corpo); }
+        if (ehPrevia) { exemplo(setores); const r = await convidarPrevia({ email, nome, tipo, codsupervisor: cod, estados }, setores); return json(res, r.status, r.corpo); }
         if (tipo === "supervisor" && !setores.some((x) => x[0] === cod)) return json(res, 400, { erro: "dados", mensagem: "Essa região não tem RCA ativo no WinThor." });
         const r = await painel(s.token, "/rest/v1/rpc/sup_convidar", {
-          method: "POST", body: { p_email: email, p_nome: nome, p_codsupervisor: cod, p_tipo: tipo },
+          method: "POST", body: { p_email: email, p_nome: nome, p_codsupervisor: cod, p_tipo: tipo, p_estados: estados },
         });
         return json(res, 200, { ok: true, liberou: !!(r && r.liberou), codigo: r && r.codigo });
       }
@@ -146,23 +152,24 @@ module.exports = async (req, res) => {
       if (!situacao || !tipo) return json(res, 400, { erro: "dados", mensagem: "Situação ou perfil inválido." });
       const codusur = tipo === "rca" ? Number(b.codusur) || null : null;
       const codsupervisor = tipo === "supervisor" ? Number(b.codsupervisor) || null : null;
+      const estados = tipo === "gerente" ? limparEstados(b.estados) : null;       // null = todas as regiões
       if (situacao === "liberado" && tipo === "rca" && !codusur) return json(res, 400, { erro: "dados", mensagem: "Informe o código do RCA antes de liberar." });
       if (situacao === "liberado" && tipo === "supervisor" && !codsupervisor) return json(res, 400, { erro: "dados", mensagem: "Escolha a região antes de liberar." });
       if (ehPrevia) {
         const c = (PREVIA.contas || []).find((x) => x.id === b.id);
         if (!c) return json(res, 404, { erro: "conta", mensagem: "Conta não encontrada." });
-        Object.assign(c, { situacao, tipo, codusur, codsupervisor, decidido_em: agora() });
+        Object.assign(c, { situacao, tipo, codusur, codsupervisor, estados, decidido_em: agora() });
         return json(res, 200, { ok: true, conta: c, previa: true });
       }
       const linhas = await painel(s.token, "/rest/v1/sup_usuarios?id=eq." + b.id, {
         method: "PATCH", headers: { Prefer: "return=representation" },
-        body: { situacao, tipo, codusur, codsupervisor, decidido_em: new Date().toISOString(), decidido_por: s.userId },
+        body: { situacao, tipo, codusur, codsupervisor, estados, decidido_em: new Date().toISOString(), decidido_por: s.userId },
       });
       if (!linhas || !linhas.length) return json(res, 404, { erro: "conta", mensagem: "Conta não encontrada." });
       const c = linhas[0];
       await painel(s.token, "/rest/v1/rpc/sup_registrar", {
         method: "POST",
-        body: { p_acao: "decisao", p_detalhe: `${c.email}: ${situacao}, ${tipo}${codusur ? " RCA " + codusur : ""}${codsupervisor ? " setor " + codsupervisor : ""}` },
+        body: { p_acao: "decisao", p_detalhe: `${c.email}: ${situacao}, ${tipo}${codusur ? " RCA " + codusur : ""}${codsupervisor ? " setor " + codsupervisor : ""}${tipo === "gerente" ? " vê " + (estados ? estados.join(",") : "todas") : ""}` },
       }).catch(() => {});
       return json(res, 200, { ok: true, conta: c });
     }

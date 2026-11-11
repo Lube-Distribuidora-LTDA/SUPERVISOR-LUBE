@@ -14,14 +14,16 @@
  *            quando um deles muda. Sem ela, o app 1.8 segue igual. Júlio: "sempre precisam ser os mesmos números" que a
  *            146 e o Central Comercial, que mudam na hora quando o WinThor corrige um dia antigo.
  *
- * O escopo sai do perfil (_escopo.js), como no /api/dados; o RCA leva só as linhas dele.
+ * O escopo sai do perfil (_escopo.js), como no /api/dados; o RCA leva só as linhas dele e o gestor com estados
+ * escolhidos (1.11.6) leva o resumo só com as regiões desses estados.
  */
 "use strict";
 const zlib = require("zlib");
 const { consultar, json, semConfiguracao, erroBanco } = require("./_db.js");
 const { sessao } = require("./_sessao.js");
 const { cors } = require("./_cors.js");
-const { escopoDaConta } = require("./_escopo.js");
+const { escopoDaConta, sufixoDaVersao } = require("./_escopo.js");
+const { filtrarResumo } = require("./_estados.js");
 
 /* o RCA só leva as linhas dele (índices na ordem de supervisor.pacote_hoje, iguais aos do pacote_setor) */
 function filtrarRca(p, codusur) {
@@ -84,7 +86,7 @@ module.exports = async (req, res) => {
     const gerente = s.conta.tipo === "gerente";
     const escopo = alvo.escopo === "G" ? "-" : alvo.escopo;      // o gestor sem setor aberto leva só o resumo
     const pedidos = String(q.pedidos || "").split(",").filter((x) => /^\d{1,15}$/.test(x)).slice(0, 4);
-    const sufixo = alvo.rca ? "-R" + alvo.rca.cod : "";
+    const sufixo = sufixoDaVersao(alvo);
     const versaoPedida = String(req.headers["x-versao"] || "");
     // a janela é por setor ('J' || cod): o gestor sem setor aberto não leva
     const janela = String(q.janela || "") === "1" && /^S\d+$/.test(escopo) ? "J" + escopo.slice(1) : "";
@@ -111,7 +113,7 @@ module.exports = async (req, res) => {
     // "igual" fala do pacote do dia e do resumo; a janela pode chegar sozinha (um dia antigo mudou)
     const igual = !l.s_payload && !l.g_payload && l.versao === versaoPedida;
     const corpo = '{"versao":' + JSON.stringify(l.versao) + ',"igual":' + igual + ',"setor":' + doRca(l.s_payload) +
-                  ',"resumo":' + (l.g_payload || "null") + ',"versao_j":' + JSON.stringify(l.versao_j) +
+                  ',"resumo":' + (l.g_payload && alvo.estados ? JSON.stringify(filtrarResumo(JSON.parse(l.g_payload), alvo.estados)) : l.g_payload || "null") + ',"versao_j":' + JSON.stringify(l.versao_j) +
                   ',"janela":' + doRca(l.j_payload) + ',"vivo":' + JSON.stringify(vivo) + ',"pedidos":' + JSON.stringify(l.lista) + "}";
     res.statusCode = 200;
     res.setHeader("Content-Type", "application/json; charset=utf-8");

@@ -885,16 +885,16 @@ function telaAdm() {
   }));
   const com = regs.filter(r => r.contas.length || r.convites.length).length;
   const pend = nPendentes(AD.dados);
-  const gestores =[...cs.filter(c => c.tipo === 'gerente' && c.situacao === 'liberado').map(c => ({ nome: c.nome || c.email, email: c.email, st: 'liberado' })),
-    ...cv.filter(v => v.tipo === 'gerente' && v.situacao === 'aguardando').map(v => ({ nome: v.nome, email: v.email, st: 'aguardando' }))];
+  const gestores =[...cs.filter(c => c.tipo === 'gerente' && c.situacao === 'liberado').map(c => ({ nome: c.nome || c.email, email: c.email, st: 'liberado', estados: c.estados })),
+    ...cv.filter(v => v.tipo === 'gerente' && v.situacao === 'aguardando').map(v => ({ nome: v.nome, email: v.email, st: 'aguardando', estados: v.estados }))];
   const botao = `<button type="button" class="btn cheio com-ic" data-a="novo-sup">${ic('mais')}Cadastrar gestor ou supervisor</button>`;
   const gestoresPag = () => `${botao.replace('data-a="novo-sup"', 'data-a="novo-sup" data-v="g"')}
-    <div class="nota">O <b>gestor</b> vê <b>todas as regiões</b>, só para consultar: não cadastra ninguém. Quem tem o SUPERVISOR LUBE liberado no Painel também entra como gestor.</div>
+    <div class="nota">O <b>gestor</b> vê <b>todas as regiões</b> ou <b>só os estados que você marcar</b> (ES, BA, RJ ou Outras), só para consultar: não cadastra ninguém. Para mudar o que um gestor já liberado vê: <b>Contas › Liberados</b>. Quem tem o SUPERVISOR LUBE liberado no Painel entra como gestor de todas as regiões.</div>
     <div class="h">Gestores <small>${gestores.length} ${gestores.length === 1 ? 'cadastrado' : 'cadastrados'}</small></div>
-    <div class="list">${gestores.length ? gestores.map(g => `<div class="row"><span class="t">${esc(g.nome)}</span><span class="r">${g.st === 'liberado' ? '<span class="pill good">liberado</span>' : '<span class="pill warn">convite enviado</span>'}</span><span class="sub full">${esc(g.email)}</span></div>`).join('') : vazio('Nenhum gestor cadastrado pelo app.')}</div>`;
+    <div class="list">${gestores.length ? gestores.map(g => `<div class="row"><span class="t">${esc(g.nome)}</span><span class="r">${g.st === 'liberado' ? '<span class="pill good">liberado</span>' : '<span class="pill warn">convite enviado</span>'}</span><span class="sub full">vê ${esc(veEstados(g.estados))} · ${esc(g.email)}</span></div>`).join('') : vazio('Nenhum gestor cadastrado pelo app.')}</div>`;
   const regioes = () => `
     ${botao}
-    <div class="nota">Cada supervisor vê <b>só a região dele</b>. O gestor vê todas. Por enquanto os RCAs não usam o app.</div>
+    <div class="nota">Cada supervisor vê <b>só a região dele</b>. O gestor vê todas ou só os estados marcados para ele. Por enquanto os RCAs não usam o app.</div>
     <div class="h">Regiões <small>${com} de ${regs.length} com supervisor</small></div>
     <div class="list">${regs.map(r => {
       const nomes = [...r.contas.map(c => esc(c.nome || c.email)), ...r.convites.map(v => esc(v.nome) + ' (convite enviado)')];
@@ -906,6 +906,61 @@ function telaAdm() {
 /* 1.11.4: convite enviado e ainda não usado conta como pendente (Júlio: "enviou tá no pendente, aceitou já apareceu");
    quando a pessoa faz o Primeiro acesso com o código, o convite vira "usado" e a conta já nasce liberada */
 const convitesAguardando = AD => ((AD && AD.convites) || []).filter(v => v.situacao === 'aguardando');
+/* 1.11.6: o gestor vê TODAS as regiões ou SÓ OS ESTADOS marcados (Júlio: "a visão do gestor seja geral ou em estados
+   específicos, por exemplo: BA, ES só e o outro só RJ"). O estado é o do nome da região ("ES - NORTE" = ES); região sem
+   estado no nome (Lube Distribuidora, Administração, Venda interna, Inativo) = Outras. A mesma regra da API (_estados.js),
+   que é quem filtra de verdade. Nada marcado = todas. */
+const ESTADOS = [['ES', 'ES'], ['BA', 'BA'], ['RJ', 'RJ'], ['OUTRAS', 'Outras']];
+const ARTIGO_UF = { ES: 'do ES', BA: 'da BA', RJ: 'do RJ' };
+const estadoDaRegiao = nome => { const m = /^\s*(ES|BA|RJ)\s*-/i.exec(String(nome || '')); return m ? m[1].toUpperCase() : 'OUTRAS'; };
+const limparEstados = l => {
+  const s = new Set((Array.isArray(l) ? l : String(l || '').split(',')).map(x => String(x).trim().toUpperCase()));
+  const e = ESTADOS.map(x => x[0]).filter(x => s.has(x));
+  return e.length ? e : null;
+};
+/* "ES - NORTE" vira "ES - Norte"; "LUBE DISTRIBUIDORA" vira "Lube Distribuidora" */
+const nomeRegiao = s => { const m = /^\s*(ES|BA|RJ)\s*-\s*(.*)$/i.exec(String(s || '')); return m ? m[1].toUpperCase() + ' - ' + titulo(m[2]) : titulo(s); };
+const juntarE = l => l.length <= 1 ? (l[0] || '') : l.slice(0, -1).join(', ') + ' e ' + l[l.length - 1];
+const rotuloEstados = l => { const e = limparEstados(l); return e ? e.map(x => x === 'OUTRAS' ? 'Outras' : x).join(' · ') : 'Todas as regiões'; };
+const veEstados = l => limparEstados(l) ? rotuloEstados(l) : 'todas as regiões';
+const regioesDosEstados = (l, setores) => { const e = limparEstados(l); return (setores || []).filter(s => !e || e.includes(estadoDaRegiao(s[1]))); };
+/* "de todas as regiões" | "das regiões do ES e da BA" | "... e das regiões sem estado (Lube Distribuidora, ...)" */
+function fraseEstados(l, setores) {
+  const e = limparEstados(l);
+  if (!e) return 'de todas as regiões';
+  const ufs = e.filter(x => x !== 'OUTRAS').map(x => ARTIGO_UF[x]);
+  const outras = e.includes('OUTRAS') ? (setores || []).filter(s => estadoDaRegiao(s[1]) === 'OUTRAS').map(s => nomeRegiao(s[1])) : null;
+  const sem = outras ? 'das regiões sem estado' + (outras.length ? ' (' + juntarE(outras) + ')' : '') : '';
+  return ufs.length ? 'das regiões ' + juntarE(ufs) + (sem ? ' e ' + sem : '') : sem;
+}
+/* os botões Todas / ES / BA / RJ / Outras (com quantas regiões cada um tem) e, embaixo, quais regiões entram */
+function seletorEstados(l, setores) {
+  const e = limparEstados(l), n = k => (setores || []).filter(s => estadoDaRegiao(s[1]) === k).length;
+  return `<div class="est-box">
+      <div class="chips" role="group" aria-label="O que o gestor vê">
+        <button type="button" class="chip" data-a="est" data-v="TODAS" aria-pressed="${!e}">Todas</button>${ESTADOS.map(([k, r]) =>
+        `<button type="button" class="chip" data-a="est" data-v="${k}" aria-pressed="${!!(e && e.includes(k))}">${r} <small>${n(k)}</small></button>`).join('')}
+      </div>
+      <input type="text" hidden data-campo="estados" value="${e ? e.join(',') : ''}">
+      <div class="sub est-quais">${quaisRegioes(e, setores)}</div>
+    </div>`;
+}
+function quaisRegioes(e, setores) {
+  const rs = regioesDosEstados(e, setores);
+  if (!e) return `Vê as ${(setores || []).length} regiões.`;
+  return rs.length ? `Vê ${rs.length} ${rs.length === 1 ? 'região' : 'regiões'}: ${esc(juntarE(rs.map(s => nomeRegiao(s[1]))))}.` : 'Nenhuma região nesses estados agora.';
+}
+function marcarEstado(b) {
+  const box = b.closest('.est-box'), inp = box.querySelector('[data-campo="estados"]');
+  let e = limparEstados(inp.value) || [];
+  if (b.dataset.v === 'TODAS') e = [];
+  else e = e.includes(b.dataset.v) ? e.filter(x => x !== b.dataset.v) : e.concat(b.dataset.v);
+  e = limparEstados(e);
+  inp.value = e ? e.join(',') : '';
+  box.querySelectorAll('[data-a="est"]').forEach(x => x.setAttribute('aria-pressed', String(x.dataset.v === 'TODAS' ? !e : !!(e && e.includes(x.dataset.v)))));
+  const setores = (S.adm.dados && S.adm.dados.setores) || [];
+  box.querySelector('.est-quais').innerHTML = quaisRegioes(e, setores);
+}
 const nPendentes = AD => ((AD && AD.contas) || []).filter(c => c.situacao === 'pendente').length + convitesAguardando(AD).length;
 function vContas() {
   const AD = S.adm, cs = AD.dados.contas || [], setores = AD.dados.setores || [], cv = convitesAguardando(AD.dados);
@@ -917,7 +972,7 @@ function vContas() {
   const cartaoConvite = v => `
     <div class="card conta-card">
       <div class="topo"><div><b>${esc(v.nome || '(sem nome)')}</b><span>${esc(v.email)}</span></div><span class="pill warn">convite enviado</span></div>
-      <div class="sub">${v.tipo === 'gerente' ? 'Gestor (vê todas as regiões)' : 'Supervisor · ' + esc(regiao(v.codsupervisor))}</div>
+      <div class="sub">${v.tipo === 'gerente' ? 'Gestor · vê ' + esc(veEstados(v.estados)) : 'Supervisor · ' + esc(regiao(v.codsupervisor))}</div>
       <div class="sub">convite em ${diaHm(v.criado_em)} · aguardando o Primeiro acesso com o código</div>
     </div>`;
   return chips('adm-f', AD.filtro, [['pendente', `Pendentes (${n('pendente') + cv.length})`], ['liberado', `Liberados (${n('liberado')})`], ['todos', `Todos (${cs.length + cv.length})`]]) +
@@ -927,10 +982,11 @@ function vContas() {
     <div class="card conta-card" data-conta="${c.id}">
       <div class="topo"><div><b>${esc(c.nome || '(sem nome)')}</b><span>${esc(c.email)}</span></div><span class="pill ${sit[c.situacao] || ''}">${esc(c.situacao)}</span></div>
       <div class="filters">
-        <div class="fld"><label>Perfil</label><select data-campo="tipo">${c.tipo === 'rca' ? '<option value="rca" selected>RCA</option>' : ''}<option value="supervisor"${c.tipo === 'supervisor' ? ' selected' : ''}>Supervisor (só a região)</option><option value="gerente"${c.tipo === 'gerente' ? ' selected' : ''}>Gestor (vê tudo)</option></select></div>
+        <div class="fld"><label>Perfil</label><select data-campo="tipo">${c.tipo === 'rca' ? '<option value="rca" selected>RCA</option>' : ''}<option value="supervisor"${c.tipo === 'supervisor' ? ' selected' : ''}>Supervisor (só a região)</option><option value="gerente"${c.tipo === 'gerente' ? ' selected' : ''}>Gestor (todas ou alguns estados)</option></select></div>
         <div class="fld" data-so="rca"${c.tipo === 'rca' ? '' : ' hidden'}><label>Código do RCA</label><input data-campo="codusur" inputmode="numeric" value="${c.codusur || ''}"></div>
         <div class="fld" data-so="supervisor"${c.tipo === 'supervisor' ? '' : ' hidden'}><label>Região</label><select data-campo="codsupervisor"><option value="">Escolha a região</option>${setores.map(([cod, nome]) => `<option value="${cod}"${c.codsupervisor === cod ? ' selected' : ''}>${esc(nome)}</option>`).join('')}</select></div>
       </div>
+      <div class="fld" data-so="gerente"${c.tipo === 'gerente' ? '' : ' hidden'}><label>O que o gestor vê</label>${seletorEstados(c.estados, setores)}</div>
       ${c.tipo === 'rca' && c.codusur ? `<div class="sub">${c.rca_nome ? `WinThor: <b>${esc(titulo(c.rca_nome))}</b>${c.rca_ativo === false ? ' (inativo)' : ''} · ${c.email_confere ? '<span class="pill good">e-mail confere</span>' : '<span class="pill warn">e-mail diferente do WinThor</span>'}` : '<span class="pill bad">código não encontrado no WinThor</span>'}</div>` : ''}
       <div class="sub">pedido em ${diaHm(c.criado_em)}${c.decidido_em ? ' · decidido em ' + diaHm(c.decidido_em) : ''}</div>
       <div class="botoes">
@@ -987,7 +1043,8 @@ async function postAcessos(corpo) {
 async function decidirAcesso(card, situacao) {
   const campo = n => card.querySelector(`[data-campo="${n}"]`);
   try {
-    await postAcessos({ id: card.dataset.conta, situacao, tipo: campo('tipo').value, codusur: campo('codusur').value.replace(/\D/g, ''), codsupervisor: campo('codsupervisor').value });
+    await postAcessos({ id: card.dataset.conta, situacao, tipo: campo('tipo').value, codusur: campo('codusur').value.replace(/\D/g, ''), codsupervisor: campo('codsupervisor').value,
+                        estados: limparEstados(campo('estados') ? campo('estados').value : '') });
     toast(situacao === 'liberado' ? 'Acesso liberado.' : situacao === 'recusado' ? 'Pedido recusado.' : 'Acesso bloqueado.');
     await carregarAcessos();
   } catch (e) { toast(e.message || String(e), true); }
@@ -1039,6 +1096,7 @@ function abrirCadastro(cod) {
         <label class="campo"><span>E-mail</span><input id="s-email" type="email" inputmode="email" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="nome@lube.com.br"></label>
         <label class="campo" id="s-setor-box"${gestor ? ' hidden' : ''}><span>Região</span><select id="s-setor"><option value="">Escolha a região</option>${(AD.setores || []).map(([c, nm]) => `<option value="${c}"${c === cod ? ' selected' : ''}>${esc(nm)}</option>`).join('')}</select></label>
       </div>
+      <div class="fld est-folha" id="s-est-box"${gestor ? '' : ' hidden'}><label>O que o gestor vê</label>${seletorEstados(null, AD.setores)}</div>
       ${ja.length || conv.length ? `<div class="faixa info">Nesta região: ${[...ja.map(c => esc(c.nome || c.email) + ' (liberado)'), ...conv.map(v => esc(v.nome) + ' (convite enviado)')].join(', ')}.</div>` : ''}
       <div class="nota" id="s-nota">${notaPerfil(gestor)}</div>
       <div class="msg bad" id="s-erro" role="alert" hidden></div>
@@ -1046,7 +1104,7 @@ function abrirCadastro(cod) {
     </form>`, 'Novo acesso');
 }
 const notaPerfil = gestor => (gestor
-  ? 'O gestor vê <b>todas as regiões</b>, só para consultar.'
+  ? 'O gestor vê <b>todas as regiões</b> ou <b>só os estados marcados</b>, só para consultar.'
   : 'O supervisor vê <b>só a região escolhida</b>.') +
   ' Depois de salvar, mande o convite pelo WhatsApp: a pessoa baixa o app, toca em <b>Primeiro acesso</b> com este e-mail e o código do convite, e já entra liberada.';
 function escolherPerfil(tipo) {
@@ -1055,6 +1113,7 @@ function escolherPerfil(tipo) {
   sg.style.setProperty('--i', g ? 1 : 0);
   sg.querySelectorAll('button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.perfil === tipo)));
   $('#s-setor-box').hidden = g;
+  $('#s-est-box').hidden = !g;
   $('#s-nota').innerHTML = notaPerfil(g);
 }
 async function salvarSupervisor() {
@@ -1067,14 +1126,15 @@ async function salvarSupervisor() {
   if (tipo === 'supervisor' && !cod) { erro('Escolha a região do supervisor.'); return; }
   const b = $('#s-salvar'); b.setAttribute('aria-busy', 'true'); b.textContent = 'Salvando…';
   try {
-    const j = await postAcessos({ acao: 'convidar', tipo, nome, email, codsupervisor: cod });
+    const estados = tipo === 'gerente' ? limparEstados($('#s-est-box [data-campo="estados"]').value) : null;
+    const j = await postAcessos({ acao: 'convidar', tipo, nome, email, codsupervisor: cod, estados });
     const setor = tipo === 'gerente' ? null : ((S.adm.dados.setores || []).find(s => s[0] === cod) || [0, 'região ' + cod])[1];
-    mostrarConvite({ tipo, nome, email, setor, codigo: j.codigo, liberou: !!j.liberou });
+    mostrarConvite({ tipo, nome, email, setor, estados, codigo: j.codigo, liberou: !!j.liberou });
     carregarAcessos();
   } catch (e) { erro(e.message || String(e)); b.removeAttribute('aria-busy'); b.textContent = 'Salvar e gerar o convite'; }
 }
 function textoConvite(x) {
-  const ver = x.tipo === 'gerente' ? 'de todas as regiões' : 'da região ' + x.setor;
+  const ver = x.tipo === 'gerente' ? fraseEstados(x.estados, S.adm.dados && S.adm.dados.setores) : 'da região ' + x.setor;
   const passo = x.liberou
     ? `2. Abra e entre com o e-mail ${x.email} e a senha que você já usa.`
     : `2. Abra e toque em "Primeiro acesso". Use o e-mail ${x.email}` + (x.codigo ? ` e o código do convite ${x.codigo}` : '') + `, e crie a sua senha.`;
@@ -1087,7 +1147,7 @@ function mostrarConvite(x) {
   abrirFolha(`
     <div class="alca" aria-hidden="true"></div>
     <div class="sucesso"><svg class="ok" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="29"/><path d="M20 33l8 8 16-17"/></svg>
-      <b>${x.tipo === 'gerente' ? 'Gestor' : 'Supervisor'} ${x.liberou ? 'liberado' : 'cadastrado'}</b><span class="sub">${esc(x.nome)} · ${x.tipo === 'gerente' ? 'todas as regiões' : esc(x.setor)}</span></div>
+      <b>${x.tipo === 'gerente' ? 'Gestor' : 'Supervisor'} ${x.liberou ? 'liberado' : 'cadastrado'}</b><span class="sub">${esc(x.nome)} · ${x.tipo === 'gerente' ? esc(veEstados(x.estados)) : esc(x.setor)}</span></div>
     ${x.liberou ? '<div class="faixa info">Essa pessoa já tinha conta: o acesso foi liberado agora. Basta entrar com a senha de sempre.</div>' : ''}
     <div class="h">Convite <small>mande para ele</small></div>
     <div class="convite">${esc(txt)}</div>
@@ -1193,7 +1253,7 @@ function faixas() {
   return (offline ? `<button type="button" class="faixa toque" data-a="m-atualizar">${navigator.onLine ? 'O servidor não respondeu agora' : 'Sem internet'}: mostrando a última cópia guardada no aparelho. Toque para tentar de novo.${ic('frente', 'seta')}</button>` : '') +
     (appNovo ? `<button type="button" class="faixa info toque" data-a="baixar-app">Nova versão do app (${esc(appNovo.versao)}) — toque para baixar e instalar.${ic('frente', 'seta')}</button>` : '');
 }
-const perfilRotulo = () => !conta ? '—' : conta.tipo === 'gerente' ? 'Gestor' : conta.tipo === 'supervisor' ? 'Supervisor' : 'RCA ' + (conta.codusur || '');
+const perfilRotulo = () => !conta ? '—' : conta.tipo === 'gerente' ? 'Gestor' + (limparEstados(conta.estados) ? ' · ' + rotuloEstados(conta.estados) : '') :conta.tipo === 'supervisor' ? 'Supervisor' : 'RCA ' + (conta.codusur || '');
 function barra(t) {
   const n = S.pilha.length;
   const ant = n ? (n > 1 ? S.pilha[n - 2].titulo : (TABS.find(x => x[0] === S.tab) || TABS[0])[1]) : null;
@@ -1544,7 +1604,8 @@ function copiar() {
 }
 
 /* ---------------- carregar ---------------- */
-function chaveCache(escopo) { return (conta && conta.email || '') + '|' + escopo; }
+/* 1.11.6: os estados do gestor entram na chave: trocou o que ele vê, a cópia antiga do aparelho não abre */
+function chaveCache(escopo) { const e = conta && limparEstados(conta.estados); return (conta && conta.email || '') + '|' + (e ? e.join('.') + '|' : '') + escopo; }
 async function baixar(escopo, etag) {
   const t = await A.token();
   if (!t) { A.expirou(); throw new Error('sessão'); }
@@ -1790,6 +1851,7 @@ document.addEventListener('click', e => {
     case 'adm-decidir': { const card = b.closest('[data-conta]'); b.setAttribute('aria-busy', 'true'); decidirAcesso(card, v); return; }
     case 'adm-excluir': { const card = b.closest('[data-conta]'); if (card) confirmarExclusao(card.dataset.conta); return; }
     case 'adm-excluir-sim': excluirConta(v, b); return;
+    case 'est': marcarEstado(b); return;
     case 'novo-sup': abrirCadastro(v || null); return;
     case 'fechar-folha': fecharFolha(); return;
     case 'copiar-convite': copiar(); return;

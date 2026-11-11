@@ -29,9 +29,11 @@ async function sessao(req) {
   // Só para testar nesta máquina, no servidor local em modo prévia (node servidor_local.js --previa).
   // Na Vercel SUP_MODO_PREVIA não existe, então isto nunca vale lá.
   if (process.env.SUP_MODO_PREVIA === "1") {
-    const t = /^Bearer\s+teste-local-(gerente|supervisor-(\d+)|rca-(\d+))$/.exec(String(h).trim());
+    // 1.11.6: "teste-local-gestor-ES-BA" = gestor (não administrador) que só vê os estados do fim do token
+    const t = /^Bearer\s+teste-local-(gerente|supervisor-(\d+)|rca-(\d+)|gestor-((?:ES|BA|RJ|OUTRAS)(?:-(?:ES|BA|RJ|OUTRAS))*))$/.exec(String(h).trim());
     if (t) {
-      const conta = t[1] === "gerente" ? { situacao: "liberado", tipo: "gerente", nome: "Prévia (gerente)", email: "previa@local", admin: true }
+      const conta = t[4] ? { situacao: "liberado", tipo: "gerente", nome: "Prévia (gestor " + t[4].split("-").join(", ") + ")", email: "previa-" + t[4].toLowerCase() + "@local", admin: false, estados: t[4].split("-") }
+        : t[1] === "gerente" ? { situacao: "liberado", tipo: "gerente", nome: "Prévia (gerente)", email: "previa@local", admin: true }
         : t[2] ? { situacao: "liberado", tipo: "supervisor", nome: "Prévia (supervisor)", email: "previa@local", codsupervisor: Number(t[2]), admin: false }
         : { situacao: "liberado", tipo: "rca", nome: "Prévia (RCA)", email: "previa@local", codusur: Number(t[3]), admin: false };
       return { ok: true, token: "teste", userId: "teste", email: conta.email, conta };

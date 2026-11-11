@@ -3,7 +3,7 @@
    Base de login do Painel Lube (Supabase Auth do projeto PAINEL LUBE
    DISTRIBUIDORA): a mesma do portal e do SAC. A chave é a "anon", feita para
    ficar no navegador; quem manda são as regras do banco (RLS e as funções
-   sup_*): conta do app nasce pendente e só o TI libera.
+   sup_*): conta do app nasce pendente e só o administrador libera.
 
    App nativo (APK/iPhone): as telas vêm de dentro do aparelho (origem
    https://localhost ou capacitor://localhost) e os dados vêm do site publicado
@@ -22,7 +22,7 @@
     site: 'https://supervisor-lube.vercel.app',
     api: nativo ? 'https://supervisor-lube.vercel.app' : '',
     nativo: nativo,
-    versao: '1.11.5 · 2026-11-11',
-    telas: 6,
+    versao: '1.11.6 · 2026-11-11',
+    telas: 7,
   };
 })();
