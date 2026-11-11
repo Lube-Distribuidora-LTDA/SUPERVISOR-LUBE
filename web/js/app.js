@@ -889,9 +889,9 @@ function telaAdm() {
     ...cv.filter(v => v.tipo === 'gerente' && v.situacao === 'aguardando').map(v => ({ nome: v.nome, email: v.email, st: 'aguardando', estados: v.estados }))];
   const botao = `<button type="button" class="btn cheio com-ic" data-a="novo-sup">${ic('mais')}Cadastrar gestor ou supervisor</button>`;
   const gestoresPag = () => `${botao.replace('data-a="novo-sup"', 'data-a="novo-sup" data-v="g"')}
-    <div class="nota">O <b>gestor</b> vê <b>todas as regiões</b> ou <b>só os estados que você marcar</b> (ES, BA, RJ ou Outras), só para consultar: não cadastra ninguém. Para mudar o que um gestor já liberado vê: <b>Contas › Liberados</b>. Quem tem o SUPERVISOR LUBE liberado no Painel entra como gestor de todas as regiões.</div>
+    <div class="nota">O <b>gestor</b> vê <b>todas as regiões</b> ou <b>só os estados que você marcar</b> (ES, BA, RJ e, uma por uma, as regiões sem estado), só para consultar: não cadastra ninguém. Para mudar o que um gestor já liberado vê: <b>Contas › Liberados</b>. Quem tem o SUPERVISOR LUBE liberado no Painel entra como gestor de todas as regiões.</div>
     <div class="h">Gestores <small>${gestores.length} ${gestores.length === 1 ? 'cadastrado' : 'cadastrados'}</small></div>
-    <div class="list">${gestores.length ? gestores.map(g => `<div class="row"><span class="t">${esc(g.nome)}</span><span class="r">${g.st === 'liberado' ? '<span class="pill good">liberado</span>' : '<span class="pill warn">convite enviado</span>'}</span><span class="sub full">vê ${esc(veEstados(g.estados))} · ${esc(g.email)}</span></div>`).join('') : vazio('Nenhum gestor cadastrado pelo app.')}</div>`;
+    <div class="list">${gestores.length ? gestores.map(g => `<div class="row"><span class="t">${esc(g.nome)}</span><span class="r">${g.st === 'liberado' ? '<span class="pill good">liberado</span>' : '<span class="pill warn">convite enviado</span>'}</span><span class="sub full">vê ${esc(veEstados(g.estados, setores))} · ${esc(g.email)}</span></div>`).join('') : vazio('Nenhum gestor cadastrado pelo app.')}</div>`;
   const regioes = () => `
     ${botao}
     <div class="nota">Cada supervisor vê <b>só a região dele</b>. O gestor vê todas ou só os estados marcados para ele. Por enquanto os RCAs não usam o app.</div>
@@ -907,40 +907,48 @@ function telaAdm() {
    quando a pessoa faz o Primeiro acesso com o código, o convite vira "usado" e a conta já nasce liberada */
 const convitesAguardando = AD => ((AD && AD.convites) || []).filter(v => v.situacao === 'aguardando');
 /* 1.11.6: o gestor vê TODAS as regiões ou SÓ OS ESTADOS marcados (Júlio: "a visão do gestor seja geral ou em estados
-   específicos, por exemplo: BA, ES só e o outro só RJ"). O estado é o do nome da região ("ES - NORTE" = ES); região sem
-   estado no nome (Lube Distribuidora, Administração, Venda interna, Inativo) = Outras. A mesma regra da API (_estados.js),
-   que é quem filtra de verdade. Nada marcado = todas. */
-const ESTADOS = [['ES', 'ES'], ['BA', 'BA'], ['RJ', 'RJ'], ['OUTRAS', 'Outras']];
+   específicos, por exemplo: BA, ES só e o outro só RJ"). O estado é o do nome da região ("ES - NORTE" = ES).
+   1.11.7: as regiões SEM estado no nome (Administração, Inativo, Lube Distribuidora, Venda Interna) aparecem uma por uma
+   para marcar (Júlio: "a que é outras precisa aparecer pra selecionar elas") e vão na lista como 'S<código>'. A mesma
+   regra da API (_estados.js), que é quem filtra de verdade. Nada marcado = todas. */
+const UFS = ['ES', 'BA', 'RJ'];
 const ARTIGO_UF = { ES: 'do ES', BA: 'da BA', RJ: 'do RJ' };
 const estadoDaRegiao = nome => { const m = /^\s*(ES|BA|RJ)\s*-/i.exec(String(nome || '')); return m ? m[1].toUpperCase() : 'OUTRAS'; };
+/* lista limpa: ES, BA, RJ (e OUTRAS, de quem foi gravado na 1.11.6), depois as regiões 'S<cód>' em ordem; vazia = null (todas) */
 const limparEstados = l => {
-  const s = new Set((Array.isArray(l) ? l : String(l || '').split(',')).map(x => String(x).trim().toUpperCase()));
-  const e = ESTADOS.map(x => x[0]).filter(x => s.has(x));
+  const s = new Set((Array.isArray(l) ? l : String(l || '').split(',')).map(x => String(x).trim().toUpperCase()).filter(x => /^(ES|BA|RJ|OUTRAS|S\d{1,6})$/.test(x)));
+  const e = UFS.concat('OUTRAS').filter(x => s.has(x)).concat([...s].filter(x => x[0] === 'S').sort((a, b) => a.slice(1) - b.slice(1)));
   return e.length ? e : null;
 };
+const liberada = (e, s) => !e || e.includes(estadoDaRegiao(s[1])) || e.includes('S' + s[0]);
 /* "ES - NORTE" vira "ES - Norte"; "LUBE DISTRIBUIDORA" vira "Lube Distribuidora" */
 const nomeRegiao = s => { const m = /^\s*(ES|BA|RJ)\s*-\s*(.*)$/i.exec(String(s || '')); return m ? m[1].toUpperCase() + ' - ' + titulo(m[2]) : titulo(s); };
 const juntarE = l => l.length <= 1 ? (l[0] || '') : l.slice(0, -1).join(', ') + ' e ' + l[l.length - 1];
-const rotuloEstados = l => { const e = limparEstados(l); return e ? e.map(x => x === 'OUTRAS' ? 'Outras' : x).join(' · ') : 'Todas as regiões'; };
-const veEstados = l => limparEstados(l) ? rotuloEstados(l) : 'todas as regiões';
-const regioesDosEstados = (l, setores) => { const e = limparEstados(l); return (setores || []).filter(s => !e || e.includes(estadoDaRegiao(s[1]))); };
-/* "de todas as regiões" | "das regiões do ES e da BA" | "... e das regiões sem estado (Lube Distribuidora, ...)" */
+const nomeDoCod = (x, setores) => { const s = (setores || []).find(r => 'S' + r[0] === x); return s ? nomeRegiao(s[1]) : 'região ' + x.slice(1); };
+/* "ES · BA · Lube Distribuidora" */
+const rotuloEstados = (l, setores) => { const e = limparEstados(l); return e ? e.map(x => x === 'OUTRAS' ? 'Sem estado' : x[0] === 'S' ? nomeDoCod(x, setores) : x).join(' · ') : 'Todas as regiões'; };
+const veEstados = (l, setores) => limparEstados(l) ? rotuloEstados(l, setores) : 'todas as regiões';
+const regioesDosEstados = (l, setores) => { const e = limparEstados(l); return (setores || []).filter(s => liberada(e, s)); };
+/* convite: "de todas as regiões" | "das regiões do ES e da BA" | "das regiões do ES e Lube Distribuidora" */
 function fraseEstados(l, setores) {
   const e = limparEstados(l);
   if (!e) return 'de todas as regiões';
-  const ufs = e.filter(x => x !== 'OUTRAS').map(x => ARTIGO_UF[x]);
-  const outras = e.includes('OUTRAS') ? (setores || []).filter(s => estadoDaRegiao(s[1]) === 'OUTRAS').map(s => nomeRegiao(s[1])) : null;
-  const sem = outras ? 'das regiões sem estado' + (outras.length ? ' (' + juntarE(outras) + ')' : '') : '';
-  return ufs.length ? 'das regiões ' + juntarE(ufs) + (sem ? ' e ' + sem : '') : sem;
+  const ufs = e.filter(x => UFS.includes(x)).map(x => ARTIGO_UF[x]);
+  const nomes = regioesDosEstados(e, setores).filter(s => estadoDaRegiao(s[1]) === 'OUTRAS').map(s => nomeRegiao(s[1]));
+  return 'das regiões ' + juntarE(ufs.concat(nomes));
 }
-/* os botões Todas / ES / BA / RJ / Outras (com quantas regiões cada um tem) e, embaixo, quais regiões entram */
+/* botões Todas / ES / BA / RJ (com quantas regiões cada um tem), as regiões sem estado uma por uma e, embaixo, quais entram */
 function seletorEstados(l, setores) {
-  const e = limparEstados(l), n = k => (setores || []).filter(s => estadoDaRegiao(s[1]) === k).length;
+  let e = limparEstados(l);
+  const outras = (setores || []).filter(s => estadoDaRegiao(s[1]) === 'OUTRAS');
+  // quem foi gravado com "OUTRAS" (1.11.6) aparece com cada região sem estado marcada
+  if (e && e.includes('OUTRAS')) e = limparEstados(e.filter(x => x !== 'OUTRAS').concat(outras.map(s => 'S' + s[0])));
+  const n = k => (setores || []).filter(s => estadoDaRegiao(s[1]) === k).length;
+  const chip = (v, r, on) => `<button type="button" class="chip" data-a="est" data-v="${v}" aria-pressed="${on}">${r}</button>`;
   return `<div class="est-box">
-      <div class="chips" role="group" aria-label="O que o gestor vê">
-        <button type="button" class="chip" data-a="est" data-v="TODAS" aria-pressed="${!e}">Todas</button>${ESTADOS.map(([k, r]) =>
-        `<button type="button" class="chip" data-a="est" data-v="${k}" aria-pressed="${!!(e && e.includes(k))}">${r} <small>${n(k)}</small></button>`).join('')}
-      </div>
+      <div class="chips" role="group" aria-label="Estados que o gestor vê">${chip('TODAS', 'Todas', !e)}${UFS.map(k => chip(k, `${k} <small>${n(k)}</small>`, !!(e && e.includes(k)))).join('')}</div>
+      ${outras.length ? `<div class="est-rot">Regiões sem estado</div>
+      <div class="chips" role="group" aria-label="Regiões sem estado que o gestor vê">${outras.map(s => chip('S' + s[0], esc(nomeRegiao(s[1])), !!(e && e.includes('S' + s[0])))).join('')}</div>` : ''}
       <input type="text" hidden data-campo="estados" value="${e ? e.join(',') : ''}">
       <div class="sub est-quais">${quaisRegioes(e, setores)}</div>
     </div>`;
@@ -948,7 +956,7 @@ function seletorEstados(l, setores) {
 function quaisRegioes(e, setores) {
   const rs = regioesDosEstados(e, setores);
   if (!e) return `Vê as ${(setores || []).length} regiões.`;
-  return rs.length ? `Vê ${rs.length} ${rs.length === 1 ? 'região' : 'regiões'}: ${esc(juntarE(rs.map(s => nomeRegiao(s[1]))))}.` : 'Nenhuma região nesses estados agora.';
+  return rs.length ? `Vê ${rs.length} ${rs.length === 1 ? 'região' : 'regiões'}: ${esc(juntarE(rs.map(s => nomeRegiao(s[1]))))}.` : 'Nenhuma região marcada.';
 }
 function marcarEstado(b) {
   const box = b.closest('.est-box'), inp = box.querySelector('[data-campo="estados"]');
@@ -972,7 +980,7 @@ function vContas() {
   const cartaoConvite = v => `
     <div class="card conta-card">
       <div class="topo"><div><b>${esc(v.nome || '(sem nome)')}</b><span>${esc(v.email)}</span></div><span class="pill warn">convite enviado</span></div>
-      <div class="sub">${v.tipo === 'gerente' ? 'Gestor · vê ' + esc(veEstados(v.estados)) : 'Supervisor · ' + esc(regiao(v.codsupervisor))}</div>
+      <div class="sub">${v.tipo === 'gerente' ? 'Gestor · vê ' + esc(veEstados(v.estados, setores)) : 'Supervisor · ' + esc(regiao(v.codsupervisor))}</div>
       <div class="sub">convite em ${diaHm(v.criado_em)} · aguardando o Primeiro acesso com o código</div>
     </div>`;
   return chips('adm-f', AD.filtro, [['pendente', `Pendentes (${n('pendente') + cv.length})`], ['liberado', `Liberados (${n('liberado')})`], ['todos', `Todos (${cs.length + cv.length})`]]) +
@@ -1147,7 +1155,7 @@ function mostrarConvite(x) {
   abrirFolha(`
     <div class="alca" aria-hidden="true"></div>
     <div class="sucesso"><svg class="ok" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="29"/><path d="M20 33l8 8 16-17"/></svg>
-      <b>${x.tipo === 'gerente' ? 'Gestor' : 'Supervisor'} ${x.liberou ? 'liberado' : 'cadastrado'}</b><span class="sub">${esc(x.nome)} · ${x.tipo === 'gerente' ? esc(veEstados(x.estados)) : esc(x.setor)}</span></div>
+      <b>${x.tipo === 'gerente' ? 'Gestor' : 'Supervisor'} ${x.liberou ? 'liberado' : 'cadastrado'}</b><span class="sub">${esc(x.nome)} · ${x.tipo === 'gerente' ? esc(veEstados(x.estados, S.adm.dados && S.adm.dados.setores)) : esc(x.setor)}</span></div>
     ${x.liberou ? '<div class="faixa info">Essa pessoa já tinha conta: o acesso foi liberado agora. Basta entrar com a senha de sempre.</div>' : ''}
     <div class="h">Convite <small>mande para ele</small></div>
     <div class="convite">${esc(txt)}</div>
@@ -1253,7 +1261,7 @@ function faixas() {
   return (offline ? `<button type="button" class="faixa toque" data-a="m-atualizar">${navigator.onLine ? 'O servidor não respondeu agora' : 'Sem internet'}: mostrando a última cópia guardada no aparelho. Toque para tentar de novo.${ic('frente', 'seta')}</button>` : '') +
     (appNovo ? `<button type="button" class="faixa info toque" data-a="baixar-app">Nova versão do app (${esc(appNovo.versao)}) — toque para baixar e instalar.${ic('frente', 'seta')}</button>` : '');
 }
-const perfilRotulo = () => !conta ? '—' : conta.tipo === 'gerente' ? 'Gestor' + (limparEstados(conta.estados) ? ' · ' + rotuloEstados(conta.estados) : '') :conta.tipo === 'supervisor' ? 'Supervisor' : 'RCA ' + (conta.codusur || '');
+const perfilRotulo = () => !conta ? '—' : conta.tipo === 'gerente' ? 'Gestor' + (limparEstados(conta.estados) ? ' · ' + rotuloEstados(conta.estados, R ? R.setores.map(x => [x.cod, x.nome]) : []) : '') :conta.tipo === 'supervisor' ? 'Supervisor' : 'RCA ' + (conta.codusur || '');
 function barra(t) {
   const n = S.pilha.length;
   const ant = n ? (n > 1 ? S.pilha[n - 2].titulo : (TABS.find(x => x[0] === S.tab) || TABS[0])[1]) : null;

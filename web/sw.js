@@ -5,7 +5,7 @@
  * Os DADOS não passam por aqui: o app guarda o pacote no IndexedDB e a /api nunca é
  * guardada pelo service worker (é por pessoa, com login).
  */
-const CASCA = 'sup-lube-casca-v17';   // v17: 1.11.6 (2026-11-11, gestor de todas as regiões ou só de alguns estados)
+const CASCA = 'sup-lube-casca-v18';   // v18: 1.11.7 (2026-11-11, regiões sem estado uma por uma para o gestor)
 const ARQUIVOS = [
   './', 'index.html', 'css/app.css', 'fonts/fonts.css', 'js/config.js', 'js/acesso.js', 'js/app.js',
   'logo-lube.png', 'logo-lube-mini.png', 'manifest.webmanifest', 'icones/icone-192.png', 'icones/icone-512.png',

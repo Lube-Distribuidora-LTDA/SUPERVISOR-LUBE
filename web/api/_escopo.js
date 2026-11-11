@@ -10,7 +10,7 @@
  */
 "use strict";
 const { consultar } = require("./_db.js");
-const { estadosDaConta, estadoDaRegiao } = require("./_estados.js");
+const { estadosDaConta, regiaoLiberada } = require("./_estados.js");
 
 async function escopoDaConta(c, pedido) {
   pedido = String(pedido || "").toUpperCase();
@@ -19,7 +19,7 @@ async function escopoDaConta(c, pedido) {
     const escopo = /^(G|S[0-9]{1,6})$/.test(pedido) ? pedido : "G";
     if (estados && escopo !== "G") {
       const r = await consultar("SELECT nome FROM core.dim_supervisor WHERE codsupervisor = $1", [Number(escopo.slice(1))]);
-      if (!r.rows.length || !estados.includes(estadoDaRegiao(r.rows[0].nome))) {
+      if (!r.rows.length || !regiaoLiberada(estados, escopo.slice(1), r.rows[0].nome)) {
         return { status: 403, erro: "acesso", mensagem: "Essa região não está liberada para você." };
       }
     }

@@ -30,7 +30,7 @@ async function sessao(req) {
   // Na Vercel SUP_MODO_PREVIA não existe, então isto nunca vale lá.
   if (process.env.SUP_MODO_PREVIA === "1") {
     // 1.11.6: "teste-local-gestor-ES-BA" = gestor (não administrador) que só vê os estados do fim do token
-    const t = /^Bearer\s+teste-local-(gerente|supervisor-(\d+)|rca-(\d+)|gestor-((?:ES|BA|RJ|OUTRAS)(?:-(?:ES|BA|RJ|OUTRAS))*))$/.exec(String(h).trim());
+    const t = /^Bearer\s+teste-local-(gerente|supervisor-(\d+)|rca-(\d+)|gestor-((?:ES|BA|RJ|OUTRAS|S\d{1,6})(?:-(?:ES|BA|RJ|OUTRAS|S\d{1,6}))*))$/.exec(String(h).trim());
     if (t) {
       const conta = t[4] ? { situacao: "liberado", tipo: "gerente", nome: "Prévia (gestor " + t[4].split("-").join(", ") + ")", email: "previa-" + t[4].toLowerCase() + "@local", admin: false, estados: t[4].split("-") }
         : t[1] === "gerente" ? { situacao: "liberado", tipo: "gerente", nome: "Prévia (gerente)", email: "previa@local", admin: true }

@@ -569,3 +569,4 @@ mark { background: var(--gold-soft); color: var(--gold-strong); border-radius: 3
 .est-box .est-quais { line-height: 1.45; }
 .est-folha { margin: 14px 2px 0; }
 .conta-card > .fld[data-so="gerente"] { flex: none; }
+.est-box .est-rot { font: 700 10.5px var(--f-body); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin-top: 4px; }
