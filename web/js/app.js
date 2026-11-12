@@ -889,7 +889,7 @@ function telaAdm() {
     ...cv.filter(v => v.tipo === 'gerente' && v.situacao === 'aguardando').map(v => ({ nome: v.nome, email: v.email, st: 'aguardando', estados: v.estados }))];
   const botao = `<button type="button" class="btn cheio com-ic" data-a="novo-sup">${ic('mais')}Cadastrar gestor ou supervisor</button>`;
   const gestoresPag = () => `${botao.replace('data-a="novo-sup"', 'data-a="novo-sup" data-v="g"')}
-    <div class="nota">O <b>gestor</b> vê <b>todas as regiões</b> ou <b>só os estados que você marcar</b> (ES, BA, RJ e, uma por uma, as regiões sem estado), só para consultar: não cadastra ninguém. Para mudar o que um gestor já liberado vê: <b>Contas › Liberados</b>. Quem tem o SUPERVISOR LUBE liberado no Painel entra como gestor de todas as regiões.</div>
+    <div class="nota">O <b>gestor</b> vê <b>todas as regiões</b> ou <b>só os estados que você marcar</b> (ES, BA, RJ e, uma por uma, as regiões sem estado), só para consultar: não cadastra ninguém. Para mudar o que um gestor vê: <b>Contas › Liberados</b> (já entrou) ou <b>Contas › Pendentes</b> (convite ainda não usado). Quem tem o SUPERVISOR LUBE liberado no Painel entra como gestor de todas as regiões.</div>
     <div class="h">Gestores <small>${gestores.length} ${gestores.length === 1 ? 'cadastrado' : 'cadastrados'}</small></div>
     <div class="list">${gestores.length ? gestores.map(g => `<div class="row"><span class="t">${esc(g.nome)}</span><span class="r">${g.st === 'liberado' ? '<span class="pill good">liberado</span>' : '<span class="pill warn">pendente</span>'}</span><span class="sub full">vê ${esc(veEstados(g.estados, setores))} · ${esc(g.email)}</span></div>`).join('') : vazio('Nenhum gestor cadastrado pelo app.')}</div>`;
   const regioes = () => `
@@ -978,14 +978,21 @@ function vContas() {
   const convs = AD.filtro === 'liberado' ? [] : cv;
   const sit = { pendente: 'warn', liberado: 'good', recusado: 'bad', bloqueado: 'bad' };
   const regiao = cod => ((setores.find(s => s[0] === cod) || [])[1]) || 'região ' + cod;
+  /* 1.11.9: o convite pendente se edita aqui (Júlio: "eu gostaria de editar as regiões que eu enviei o convite e que
+     estão pendentes"): perfil, região do supervisor ou o que o gestor vê. O código do WhatsApp continua o mesmo. */
   const cartaoConvite = v => `
-    <div class="card conta-card">
+    <div class="card conta-card" data-convite="${esc(v.email)}">
       <div class="topo"><div><b>${esc(v.nome || '(sem nome)')}</b><span>${esc(v.email)}</span></div><span class="pill warn">pendente</span></div>
-      <div class="sub">${v.tipo === 'gerente' ? 'Gestor · vê ' + esc(veEstados(v.estados, setores)) : 'Supervisor · ' + esc(regiao(v.codsupervisor))}</div>
-      <div class="sub">convite enviado em ${diaHm(v.criado_em)} · falta o Primeiro acesso com o código</div>
+      <div class="filters">
+        <div class="fld"><label>Perfil</label><select data-campo="tipo"><option value="supervisor"${v.tipo === 'gerente' ? '' : ' selected'}>Supervisor (só a região)</option><option value="gerente"${v.tipo === 'gerente' ? ' selected' : ''}>Gestor (todas ou alguns estados)</option></select></div>
+        <div class="fld" data-so="supervisor"${v.tipo === 'gerente' ? ' hidden' : ''}><label>Região</label><select data-campo="codsupervisor"><option value="">Escolha a região</option>${setores.map(([cod, nome]) => `<option value="${cod}"${v.codsupervisor === cod ? ' selected' : ''}>${esc(nome)}</option>`).join('')}</select></div>
+      </div>
+      <div class="fld" data-so="gerente"${v.tipo === 'gerente' ? '' : ' hidden'}><label>O que o gestor vê</label>${seletorEstados(v.estados, setores)}</div>
+      <div class="sub">convite enviado em ${diaHm(v.criado_em)} · falta o Primeiro acesso com o código${v.tipo !== 'gerente' && v.codsupervisor && !setores.some(s => s[0] === v.codsupervisor) ? ' · ' + esc(regiao(v.codsupervisor)) + ' sem RCA ativo' : ''}</div>
+      <div class="botoes"><button type="button" class="btn peq sec" data-a="adm-convite">Salvar o convite</button></div>
     </div>`;
   return chips('adm-f', AD.filtro, [['pendente', `Pendentes (${n('pendente') + cv.length})`], ['liberado', `Liberados (${n('liberado')})`], ['todos', `Todos (${cs.length + cv.length})`]]) +
-    '<div class="faixa info">Convite enviado fica em Pendentes até a pessoa fazer o Primeiro acesso; aí passa sozinho para Liberados. Aqui também ficam as contas criadas pelo Primeiro acesso sem convite. A lista se atualiza sozinha. Quem tem o SUPERVISOR LUBE liberado no Painel entra direto como gestor.</div>' +
+    '<div class="faixa info">Convite enviado fica em Pendentes até a pessoa fazer o Primeiro acesso; aí passa sozinho para Liberados. No convite pendente você troca a região ou o que o gestor vê e toca em "Salvar o convite": o código que a pessoa recebeu continua o mesmo. Aqui também ficam as contas criadas pelo Primeiro acesso sem convite. A lista se atualiza sozinha. Quem tem o SUPERVISOR LUBE liberado no Painel entra direto como gestor.</div>' +
     convs.map(cartaoConvite).join('') +
     (lista.length ? lista.map(c => `
     <div class="card conta-card" data-conta="${c.id}">
@@ -1057,6 +1064,20 @@ async function decidirAcesso(card, situacao) {
     toast(situacao === 'liberado' ? 'Acesso liberado.' : situacao === 'recusado' ? 'Pedido recusado.' : 'Acesso bloqueado.');
     await carregarAcessos();
   } catch (e) { toast(e.message || String(e), true); }
+}
+/* 1.11.9: grava o convite pendente editado (sup_editar_convite do Painel: só administrador, só convite aguardando,
+   mesmo código, histórico em sup_acessos) */
+async function salvarConvite(card, b) {
+  const campo = n => card.querySelector(`[data-campo="${n}"]`);
+  try {
+    const tipo = campo('tipo').value === 'gerente' ? 'gerente' : 'supervisor';
+    if (tipo === 'supervisor' && !campo('codsupervisor').value) throw new Error('Escolha a região do supervisor.');
+    const j = await postAcessos({ acao: 'convite', email: card.dataset.convite, tipo, codsupervisor: campo('codsupervisor').value,
+                                  estados: tipo === 'gerente' ? limparEstados(campo('estados').value) : null });
+    toast(j.mudou === false ? 'O convite já estava assim.' : 'Convite atualizado. O código que a pessoa recebeu continua o mesmo.');
+    S.adm.assinatura = null;
+    await carregarAcessos();
+  } catch (e) { b.removeAttribute('aria-busy'); toast(e.message || String(e), true); }
 }
 /* 1.11.5: excluir conta recusada ou bloqueada (Júlio, 2026-11-11). Confirma numa folha; o banco (sup_excluir_conta)
    só aceita do administrador e apaga o login só se ele for só do app (quem usa o Painel ou o SAC continua entrando lá) */
@@ -1860,6 +1881,7 @@ document.addEventListener('click', e => {
     case 'adm-decidir': { const card = b.closest('[data-conta]'); b.setAttribute('aria-busy', 'true'); decidirAcesso(card, v); return; }
     case 'adm-excluir': { const card = b.closest('[data-conta]'); if (card) confirmarExclusao(card.dataset.conta); return; }
     case 'adm-excluir-sim': excluirConta(v, b); return;
+    case 'adm-convite': { const card = b.closest('[data-convite]'); if (!card) return; b.setAttribute('aria-busy', 'true'); salvarConvite(card, b); return; }
     case 'est': marcarEstado(b); return;
     case 'novo-sup': abrirCadastro(v || null); return;
     case 'fechar-folha': fecharFolha(); return;
@@ -1877,8 +1899,8 @@ document.addEventListener('click', e => {
 
 document.addEventListener('change', e => {
   const t = e.target, v = t.value;
-  if (t.closest('[data-conta]')) {
-    if (t.dataset.campo === 'tipo') { const card = t.closest('[data-conta]'); card.querySelectorAll('[data-so]').forEach(el => { el.hidden = el.dataset.so !== v; }); }
+  if (t.closest('[data-conta], [data-convite]')) {
+    if (t.dataset.campo === 'tipo') { const card = t.closest('[data-conta], [data-convite]'); card.querySelectorAll('[data-so]').forEach(el => { el.hidden = el.dataset.so !== v; }); }
     return;
   }
   if (t.closest('#folha') || !D) return;

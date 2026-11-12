@@ -13,6 +13,8 @@
  *       libera na hora) e devolve o código para o administrador mandar na mensagem.
  * POST  { acao: 'excluir', id } — 1.11.5: exclui conta RECUSADA ou BLOQUEADA (função sup_excluir_conta do Painel, que
  *       confere o administrador, guarda o histórico e só apaga o login se ele for só do app).
+ * POST  { acao: 'convite', email, tipo, codsupervisor, estados } — 1.11.9: edita o convite AINDA AGUARDANDO (função
+ *       sup_editar_convite do Painel): perfil, região do supervisor ou o que o gestor vê. O código não muda.
  * 1.11.6: o gestor pode ter ESTADOS ({ estados: ['ES', 'BA'] }, no convite e na decisão): vê só as regiões desses estados
  *       (_estados.js). Sem estados (ou vazio) = todas as regiões, como sempre foi.
  *
@@ -57,6 +59,7 @@ function exemplo(setores) {
     { id: "00000000-0000-4000-8000-000000000003", email: "exemplo.diego@lube.com.br", nome: "Diego Exemplo", tipo: "gerente", codusur: null, codsupervisor: null, estados: ["RJ"], situacao: "liberado", criado_em: agora(), decidido_em: agora() },
   ];
   if (b) PREVIA.convites.push({ email: "exemplo.carla@lube.com.br", nome: "Carla Exemplo", tipo: "supervisor", codsupervisor: b[0], situacao: "aguardando", criado_em: agora() });
+  PREVIA.convites.push({ email: "exemplo.elisa@lube.com.br", nome: "Elisa Exemplo", tipo: "gerente", codsupervisor: null, estados: ["ES", "BA"], situacao: "aguardando", criado_em: agora() });
 }
 
 async function convidarPrevia(b, setores) {
@@ -130,6 +133,30 @@ module.exports = async (req, res) => {
           method: "POST", body: { p_email: email, p_nome: nome, p_codsupervisor: cod, p_tipo: tipo, p_estados: estados },
         });
         return json(res, 200, { ok: true, liberou: !!(r && r.liberou), codigo: r && r.codigo });
+      }
+
+      if (b.acao === "convite") {
+        // 1.11.9: muda o perfil, a região ou o que o gestor vê de um convite ainda aguardando, sem código novo
+        const tipo = b.tipo === "gerente" ? "gerente" : "supervisor";
+        const email = String(b.email || "").trim().toLowerCase();
+        const cod = tipo === "supervisor" ? Number(b.codsupervisor) || null : null;
+        const estados = tipo === "gerente" ? limparEstados(b.estados) : null;     // null = todas as regiões
+        if (!RE_EMAIL.test(email)) return json(res, 400, { erro: "dados", mensagem: "Convite inválido." });
+        if (tipo === "supervisor" && !cod) return json(res, 400, { erro: "dados", mensagem: "Escolha a região do supervisor." });
+        const setores = await regioes();
+        if (tipo === "supervisor" && !setores.some((x) => x[0] === cod)) return json(res, 400, { erro: "dados", mensagem: "Essa região não tem RCA ativo no WinThor." });
+        if (ehPrevia) {
+          exemplo(setores);
+          const v = PREVIA.convites.find((x) => x.email === email && x.situacao === "aguardando");
+          if (!v) return json(res, 400, { erro: "dados", mensagem: "Convite não encontrado (foi cancelado?). Atualize a tela." });
+          Object.assign(v, { tipo, codsupervisor: cod, estados });
+          return json(res, 200, { ok: true, mudou: true, previa: true });
+        }
+        const r = await painel(s.token, "/rest/v1/rpc/sup_editar_convite", {
+          method: "POST", body: { p_email: email, p_tipo: tipo, p_codsupervisor: cod, p_estados: estados },
+        });
+        if (!r || !r.ok) return json(res, 400, { erro: "dados", mensagem: (r && r.mensagem) || "Não consegui mudar o convite." });
+        return json(res, 200, { ok: true, mudou: !!r.mudou });
       }
 
       if (!/^[0-9a-f-]{36}$/i.test(String(b.id || ""))) return json(res, 400, { erro: "id" });
