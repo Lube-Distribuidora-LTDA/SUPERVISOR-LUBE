@@ -570,3 +570,17 @@ mark { background: var(--gold-soft); color: var(--gold-strong); border-radius: 3
 .est-folha { margin: 14px 2px 0; }
 .conta-card > .fld[data-so="gerente"] { flex: none; }
 .est-box .est-rot { font: 700 10.5px var(--f-body); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin-top: 4px; }
+
+/* 1.12: o GERAL do gestor, no topo de todas as regiões e em destaque dourado (Júlio, 2026-11-12) */
+.setor-pill.geral { border-color: transparent; background: linear-gradient(135deg, var(--gold-strong), var(--gold)); color: var(--on-gold); font-weight: 800; letter-spacing: .02em; box-shadow: 0 6px 18px -8px rgba(233, 200, 119, .75), 0 0 0 1px rgba(255, 255, 255, .18) inset; }
+.setor-pill.geral .ic { color: var(--on-gold); }
+.row.geral-op { margin: 2px 0 12px; border: 1px solid var(--gold-line); border-radius: 16px; padding: 14px 16px; align-items: center;
+  background: radial-gradient(320px 120px at 0% 0%, rgba(233, 200, 119, .28), transparent 70%), linear-gradient(135deg, var(--gold-soft), transparent 60%), var(--surface);
+  box-shadow: 0 10px 26px -14px rgba(233, 200, 119, .55), var(--shadow); }
+.row.geral-op:last-child { border-bottom: 1px solid var(--gold-line); }
+.row.geral-op .t { display: inline-flex; align-items: center; gap: 8px; font: 800 17px var(--f-display); letter-spacing: .06em; background: linear-gradient(180deg, var(--gold-strong), var(--gold)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.row.geral-op .t .ic { width: 18px; height: 18px; color: var(--gold); flex: none; }
+.row.geral-op .r { font: 800 14.5px var(--f-num); color: var(--gold-strong); }
+.row.geral-op .sub { color: var(--muted); font-size: 12px; }
+.row.geral-op.sel { box-shadow: inset 4px 0 0 var(--gold), 0 10px 26px -14px rgba(233, 200, 119, .55), var(--shadow); }
+.row.geral-op .r .ic { color: var(--gold); width: 20px; height: 20px; }

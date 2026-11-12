@@ -42,13 +42,32 @@ function regiaoLiberada(estados, cod, nome) {
   return estados.includes(estadoDaRegiao(nome)) || estados.includes("S" + Number(cod));
 }
 
-/* o resumo entre setores (supervisor.pacote_resumo: setores = [cod, nome, ...]) só com as regiões liberadas */
+/* o resumo entre setores (supervisor.pacote_resumo: setores = [cod, nome, ...]) só com as regiões liberadas.
+   1.12 (GERAL): 'geral' traz, para cada conjunto de regiões, quantos clientes têm aquele conjunto ([[7, 12], 3] = 3
+   clientes com pedido no ES - Vitória Norte e no ES - Vitória Sul). Sai daqui só com as regiões liberadas: o gestor não
+   fica sabendo nem a contagem de cliente de região que não vê. */
+function filtrarGeral(geral, ok) {
+  const out = {};
+  for (const [k, lista] of Object.entries(geral || {})) {
+    if (!Array.isArray(lista)) continue;
+    const m = new Map();
+    for (const item of lista) {
+      const regs = (Array.isArray(item && item[0]) ? item[0] : []).map(Number).filter((c) => ok.has(c));
+      if (!regs.length) continue;
+      const ch = regs.join(",");
+      m.set(ch, [regs, (m.has(ch) ? m.get(ch)[1] : 0) + (Number(item[1]) || 0)]);
+    }
+    out[k] = [...m.values()];
+  }
+  return out;
+}
 function filtrarResumo(p, estados) {
   if (!p || !estados) return p;
   const out = Object.assign({}, p);
   out.setores = (p.setores || []).filter((s) => regiaoLiberada(estados, s[0], s[1]));
+  if (p.geral) out.geral = filtrarGeral(p.geral, new Set(out.setores.map((s) => Number(s[0]))));
   out.estados = estados;
   return out;
 }
 
-module.exports = { UFS, estadoDaRegiao, limpar, estadosDaConta, regiaoLiberada, filtrarResumo };
+module.exports = { UFS, estadoDaRegiao, limpar, estadosDaConta, regiaoLiberada, filtrarResumo, filtrarGeral };

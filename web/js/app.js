@@ -295,9 +295,13 @@ function graficoDias(d1, d2, fonte, rca, destaque) {
   if (dias.length < 2) return '';
   const idx = new Map(dias.map((d, i) => [d, i])), vals = dias.map(() => 0);
   for (const o of (fonte === 'dig' ? D.ped : D.nf)) { if (rca && o.rca !== rca) continue; const i = idx.get(o.d); if (i !== undefined) vals[i] += o.vl; }
+  return desenharDias(dias, vals, fonte === 'dig' ? 'digitada' : 'faturada', destaque);
+}
+/* as barras por dia (o GERAL, 1.12, desenha com os valores somados das regiões) */
+function desenharDias(dias, vals, qual, destaque) {
   // valor completo sobre a barra só com até 4 dias (com mais, não cabe: o valor de cada dia fica no toque na barra)
   const max = Math.max(1, ...vals), W = 400, H = 130, T = 22, B = 18, bw = W / dias.length, rotulos = dias.length <= 4;
-  let r = `<svg class="ch" viewBox="0 0 ${W} ${H}" role="img" aria-label="Venda ${fonte === 'dig' ? 'digitada' : 'faturada'} por dia">`;
+  let r = `<svg class="ch" viewBox="0 0 ${W} ${H}" role="img" aria-label="Venda ${qual} por dia">`;
   r += `<line class="g" x1="0" x2="${W}" y1="${T}" y2="${T}"/><line class="g" x1="0" x2="${W}" y1="${H - B}" y2="${H - B}"/>`;
   if (!rotulos) r += `<text x="0" y="${T - 6}">${brlK(max)}</text>`;
   vals.forEach((v, i) => {
@@ -1186,6 +1190,218 @@ function mostrarConvite(x) {
     <button type="button" class="link" data-a="fechar-folha">Fechar</button>`, 'Convite do supervisor');
 }
 
+/* ---------------- GERAL do gestor (1.12) ----------------
+   Júlio (2026-11-12): "onde eu seleciono a região para olhar, gostaria de colocar um GERAL pra quem é gestor, será
+   contabilizado o acumulado daquele momento de todas as regiões que ele tem a visualização" e "ele precisa ficar no topo
+   de todas as regiões em destaque dourado". O GERAL soma as regiões do resumo entre setores (R), que a API já entrega só
+   com as regiões liberadas para o gestor e que chega ao vivo. Cada número de região é o da tela da região, calculado no
+   banco com as mesmas regras (supervisor.pacote_resumo, db/16); cliente que aparece em duas regiões conta UMA vez no total
+   (R.geral), como a 146 com vários supervisores. Lista de cliente e de produto continua por região: no GERAL, Carteira e
+   Curva ABC mostram as regiões, e o toque numa região abre ela. */
+const ehGeral = () => !!(D && D.geral);
+function geralDe(R) {
+  const i0 = R.meses.length - 1, ss = R.setores, cods = new Set(ss.map(s => s.cod)), gl = R.geral || {};
+  const uniao = k => soma((gl[k] || []).filter(x => (x[0] || []).some(c => cods.has(c))), x => +x[1] || 0);
+  const porReg = k => { const m = new Map(); for (const [regs, n] of gl[k] || []) for (const c of regs || []) m.set(c, (m.get(c) || 0) + (+n || 0)); return m; };
+  const t = { i0, m0: R.meses[i0], n: ss.length, completo: !!R.geral && ss.every(s => s.g),
+              vh: 0, nh: 0, v7: 0, vm: 0, nm: 0, sem: 0, fat: 0, vb: 0, tls: 0, ms: 0, dev: 0, venc: 0, jur: 0, fatAnt: 0,
+              meta: 0, metaAte: 0, fatMeta: 0, tlsMeta: 0, msMeta: 0, comMeta: 0, semMetaN: 0, semMetaFat: 0, uteis: 0, dias: [] };
+  for (const s of ss) {
+    const g = s.g || {}, f = +s.venda[i0] || 0, tl = +s.tls[i0] || 0, ms = +s.massa[i0] || 0, mt = s.meta ? +s.meta[i0] || 0 : 0;
+    t.vh += g.vh || 0; t.nh += g.nh || 0; t.v7 += g.v7 || 0; t.vm += g.vm || 0; t.nm += g.nm || 0; t.sem += g.sem || 0;
+    t.fat += f; t.vb += +s.vendaBruta[i0] || 0; t.tls += tl; t.ms += ms; t.dev += +s.dev[i0] || 0;
+    t.venc += s.vencido; t.jur += s.juridico; t.fatAnt += s.fatAnt || 0;
+    if (mt) { t.meta += mt; t.metaAte += +s.metaAte[i0] || 0; t.fatMeta += f; t.tlsMeta += tl; t.msMeta += ms; t.comMeta++; t.uteis = Math.max(t.uteis, s.uteis || 0); }
+    else if (Math.abs(f) > 0.005) { t.semMetaN++; t.semMetaFat += f; }
+    (s.fatDia || []).forEach((v, i) => { t.dias[i] = (t.dias[i] || 0) + (+v || 0); });
+  }
+  t.cliHoje = uniao('cli_hoje'); t.pos = uniao('cli_mes'); t.cart = uniao('cli_cart'); t.cliVenc = uniao('cli_venc');
+  t.reg = { hoje: porReg('cli_hoje'), mes: porReg('cli_mes'), cart: porReg('cli_cart') };
+  return t;
+}
+function montarGeral() {
+  const d = { geral: true, tipo: 'geral', setor: { cod: 'GERAL', nome: 'GERAL' }, hoje: R.hoje, ini: R.meses[0] || R.hoje, gerado: R.gerado, hv: '',
+              cargas: { pedido: R.gerado, faturado: R.gerado, titulo: R.gerado }, G: geralDe(R) };
+  aplicarVivo(d);
+  return d;
+}
+/* o resumo da manhã de antes da 1.12 não traz os números do GERAL: o do dia (ao vivo) chega em segundos */
+const geralEsperando = () => `<div class="faixa info">Somando as regiões… O geral aparece em instantes, assim que o resumo ao vivo chegar.</div>${ESQ}`;
+const deltaTxt = (v, txt) => v == null ? '' : `<span class="delta ${v >= 0 ? 'up' : 'down'}">${v >= 0 ? '▲' : '▼'} ${pct(Math.abs(v), 0)}</span> ${txt}`;
+/* barrinhas do mês (sem domingo), com o faturado por dia somado das regiões */
+function barrasGeral(T, grande) {
+  const dias = [], vals = [];
+  T.dias.forEach((v, i) => { const d = T.m0 + i; if (dow(d) !== 0) { dias.push(d); vals.push(v); } });
+  if (dias.length < 2) return '';
+  if (grande) return desenharDias(dias, vals, 'faturada', D.hoje);
+  const max = Math.max(1, ...vals), W = 300, H = 38, bw = W / dias.length;
+  return `<svg class="mini" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">` + vals.map((v, i) => v > 0
+    ? `<rect x="${(i * bw + bw * .18).toFixed(1)}" y="${(H - v / max * H).toFixed(1)}" width="${Math.max(1, bw * .64).toFixed(1)}" height="${(v / max * H).toFixed(1)}" rx="1.4"${i === dias.length - 1 ? ' class="hl"' : ''} style="--i:${i}"/>` : '').join('') + '</svg>';
+}
+const pillMeta = s => { const i0 = R.meses.length - 1, mt = s.meta ? +s.meta[i0] || 0 : 0, v = +s.venda[i0] || 0;
+  return mt ? `<span class="pill ${situacaoMeta(v, mt, +s.metaAte[i0] || 0)[0]}">${pct(v / mt, 0)} da meta</span>` : '<span class="pill">sem meta</span>'; };
+const regioesN = n => n + (n === 1 ? ' região' : ' regiões');
+const notaGeral = () => `<div class="nota">GERAL = a soma ${D.G.n === 1 ? 'da região' : 'das ' + D.G.n + ' regiões'} que você vê, ao vivo. Cliente que aparece em duas regiões conta uma vez só no total, como na 146. Toque numa região para abrir ela.</div>`;
+/* regiões por faturado do mês, com a % da meta: Resumo e Vendas */
+function listaRegioesFat(id, lim) {
+  const i0 = R.meses.length - 1, ls = R.setores.slice().sort((a, b) => (+b.venda[i0] || 0) - (+a.venda[i0] || 0));
+  const mx = ls.length ? Math.max(1, +ls[0].venda[i0] || 0) : 1;
+  const rows = ls.map(s => {
+    const i = i0, mt = s.meta ? +s.meta[i] || 0 : 0, v = +s.venda[i] || 0, tl = +s.tls[i] || 0;
+    return `
+      <button type="button" class="row" data-a="setor" data-v="${s.cod}">
+        <span class="t">${esc(s.nome)}</span><span class="r">${brlK(v)}</span>
+        <span class="sub">${nf0.format(D.G.reg.mes.get(s.cod) || 0)} positivados · <span class="nw">margem ${pctM(tl ? (+s.massa[i] || 0) / tl : 0)}</span></span><span class="sub r">${pillMeta(s)}</span>
+        <span class="full">${bar(mt ? v / mt : v / mx, 'gold')}</span>
+      </button>`;
+  });
+  return `<div class="list" data-lista="${id}">${limitar(rows, lim, id, 'Faturado por região')}</div>`;
+}
+
+function gResumo() {
+  const T = D.G, H = D.hoje, nomeM = MESES_L[dt(H).getUTCMonth()];
+  if (!T.completo) return geralEsperando();
+  const dl = T.v7 ? T.vh / T.v7 - 1 : null, dMes = T.fatAnt ? T.fat / T.fatAnt - 1 : null, a0 = mesSeg(T.m0, -1);
+  const fp = T.cart ? T.pos / T.cart : 0, mg = T.tls ? T.ms / T.tls : 0;
+  const todasComMeta = T.comMeta && !T.semMetaN;
+  const mt = T.meta ? { total: T.meta, ate: T.metaAte, dias: T.uteis, fat: T.fatMeta, falta: T.meta - T.fatMeta, st: situacaoMeta(T.fatMeta, T.meta, T.metaAte) } : null;
+  const maior = R.setores.slice().sort((a, b) => (+b.venda[T.i0] || 0) - (+a.venda[T.i0] || 0))[0];
+  const linhaMeta = mt && !todasComMeta ? `<span class="meta-todas"><span class="mt-l">Regiões com meta (${T.comMeta}) <span class="pill ${mt.st[0]}">${pct(T.fatMeta / T.meta)}</span></span><span class="mt-v"><b>${brl(T.fatMeta)}</b> de ${brl(T.meta)}</span></span>
+      <span class="meta-sem">${T.semMetaN} ${T.semMetaN === 1 ? 'região com venda está' : 'regiões com venda estão'} sem meta no WinThor em ${nomeM} (${brl(T.semMetaFat)} faturados), fora da meta.</span>` : '';
+  return `
+  <div class="resumo">
+    <button type="button" class="hoje-card" data-a="ir" data-v="vendas:hoje">
+      <span class="cartao-rot">${ic('cart')}Digitado hoje <small>até ${hm(D.cargas.pedido)}</small>${ic('frente', 'seta')}</span>
+      <span class="valor-grande" data-cnt="${T.vh}" data-f="brlK">${brlK(T.vh)}</span>
+      <span class="sub">${dl != null ? deltaTxt(dl, 'vs. ' + diaLongo(H - 7)) : 'sem pedido em ' + diaLongo(H - 7) + ' para comparar'}</span>
+      <span class="trio duo">
+        <span><small>Pedidos</small><b data-cnt="${T.nh}" data-f="n">${nf0.format(T.nh)}</b></span>
+        <span><small>Clientes</small><b data-cnt="${T.cliHoje}" data-f="n">${nf0.format(T.cliHoje)}</b></span>
+      </span>
+      ${T.sem ? `<span class="alerta">${T.sem} ${T.sem > 1 ? 'RCAs ativos sem pedido' : 'RCA ativo sem pedido'} hoje · ver por região</span>` : ''}
+    </button>
+    ${todasComMeta ? `<button type="button" class="mes-card com-meta" data-a="ir" data-v="vendas:mes">
+      <span class="cartao-rot">${ic('cash')}Meta de ${nomeM} <small>${mt.dias ? `${mt.dias} ${mt.dias === 1 ? 'dia útil' : 'dias úteis'} com hoje` : 'mês fechado'}</small>${ic('frente', 'seta')}</span>
+      <span class="valor-grande" data-cnt="${T.fat}" data-f="brlK">${brlK(T.fat)}</span>
+      <span class="meta-linha"><span class="meta-de">meta ${brl(mt.total)}</span><span class="pill ${mt.st[0]}">${mt.st[1]}</span></span>
+      ${blocoMeta(mt, mg)}
+    </button>` : `<button type="button" class="mes-card" data-a="ir" data-v="vendas:mes">
+      <span class="cartao-rot">${ic('cash')}Faturado em ${nomeM} <small>até ${dm(H)}</small>${ic('frente', 'seta')}</span>
+      <span class="linha-valor"><span class="valor-grande" data-cnt="${T.fat}" data-f="brlK">${brlK(T.fat)}</span><span class="pill">Margem ${pctM(mg)}</span></span>
+      <span class="sub">${dMes != null ? deltaTxt(dMes, 'vs. ' + MESES[dt(a0).getUTCMonth()] + ' no mesmo período') : nf0.format(T.pos) + ' clientes positivados'}</span>
+      ${barrasGeral(T)}
+      ${linhaMeta}
+    </button>`}
+    <div class="tiles">
+      <button type="button" class="tile ouro" data-a="ir" data-v="carteira:pos">${anel(fp)}<span class="cartao-rot">${ic('users')}Carteira</span><span class="v" data-cnt="${fp}" data-f="pct0">${pct(fp, 0)}</span><span class="d">${nf0.format(T.pos)} positivados de ${nf0.format(T.cart)} cadastrados</span></button>
+      <button type="button" class="tile perigo" data-a="ir" data-v="inad:resumo"><span class="cartao-rot">${ic('alert')}Vencido</span><span class="v" data-cnt="${T.venc}" data-f="brlK">${brlK(T.venc)}</span><span class="d">${nf0.format(T.cliVenc)} ${T.cliVenc === 1 ? 'cliente' : 'clientes'} com título vencido</span></button>
+      <button type="button" class="tile atencao" data-a="ir" data-v="dev:resumo"><span class="cartao-rot">${ic('ret')}Devolução</span><span class="v">${pct(T.vb ? T.dev / T.vb : 0)}</span><span class="d">${brlK(T.dev)} devolvidos no mês</span></button>
+      <button type="button" class="tile" data-a="ir" data-v="vendas:regioes"><span class="cartao-rot">${ic('layers')}Maior região</span><span class="v txt">${maior ? esc(maior.nome) : '—'}</span><span class="d">${maior ? brlK(+maior.venda[T.i0] || 0) + ' · ' + regioesN(T.n) + ' no geral' : ''}</span></button>
+    </div>
+    <div class="h">Por região <small>faturado em ${nomeM} · toque para abrir</small></div>
+    ${listaRegioesFat('g-res-reg', 6)}
+    ${notaGeral()}
+  </div>`;
+}
+function gVendas() {
+  const T = D.G, H = D.hoje, nomeM = MESES_L[dt(H).getUTCMonth()];
+  if (!T.completo) return geralEsperando();
+  const dia = () => {
+    const dl = T.v7 ? T.vh / T.v7 - 1 : null;
+    const dTxt = dl != null ? `${deltaTxt(dl, 'vs. ' + diaLongo(H - 7))} (${brlK(T.v7)})` : `sem pedido em ${diaLongo(H - 7)}`;
+    const ls = R.setores.map(s => ({ s, g: s.g || {}, cl: T.reg.hoje.get(s.cod) || 0 })).sort((a, b) => (b.g.vh || 0) - (a.g.vh || 0) || (b.g.sem || 0) - (a.g.sem || 0));
+    const mx = ls.length ? Math.max(1, ls[0].g.vh || 0) : 1;
+    const rows = ls.map(x => `
+      <button type="button" class="row" data-a="setor" data-v="${x.s.cod}">
+        <span class="t">${esc(x.s.nome)}</span><span class="r">${brlK(x.g.vh || 0)}</span>
+        <span class="sub">${nf0.format(x.g.nh || 0)} ${x.g.nh === 1 ? 'pedido' : 'pedidos'} · ${nf0.format(x.cl)} ${x.cl === 1 ? 'cliente' : 'clientes'}</span><span class="sub r">${x.g.sem ? `<span class="pill warn">${x.g.sem} sem pedido</span>` : ''}</span>
+        <span class="full">${bar((x.g.vh || 0) / mx, 'gold')}</span>
+      </button>`);
+    return `
+    <div class="h">Venda do dia <small>${diaLongo(H)} · até ${hm(D.cargas.pedido)}</small></div>
+    <div class="kpis k2">${kpi('Digitado', brlK(T.vh), dTxt, 'hero')}${kpi('Pedidos', nf0.format(T.nh), 'digitados')}${kpi('Positivação', nf0.format(T.cliHoje), 'clientes com pedido')}${kpi('Ticket médio', brlK(T.nh ? T.vh / T.nh : 0), 'por pedido', 'cheia')}</div>
+    ${T.sem ? `<div class="faixa">${T.sem} ${T.sem > 1 ? 'RCAs ativos sem pedido' : 'RCA ativo sem pedido'} hoje, somando as regiões. Toque numa região para ver quem.</div>` : ''}
+    <div class="h">Por região <small>digitado hoje</small></div>
+    <div class="list" data-lista="g-dia">${limitar(rows, 8, 'g-dia', 'Digitado hoje por região')}</div>`;
+  };
+  const mes = () => `
+    <div class="h">Acumulado <small>${nomeM} até ${dm(H)}</small></div>
+    <div class="kpis k2">${kpi('Faturado', brlK(T.fat), 'venda menos devolução', 'hero')}${kpi('Margem', pctM(T.tls ? T.ms / T.tls : 0), brlK(T.ms) + ' de massa de margem')}${kpi('Digitado', brlK(T.vm), nf0.format(T.nm) + ' pedidos')}${kpi('Positivação', nf0.format(T.pos), 'clientes com pedido')}${kpi('Ticket médio', brlK(T.nm ? T.vm / T.nm : 0), 'por pedido')}</div>
+    <div class="card">${barrasGeral(T, true) || '<span class="muted">O gráfico aparece a partir do segundo dia do mês.</span>'}</div>
+    ${notaGeral()}`;
+  const regioes = () => `<div class="h">Por região <small>faturado em ${nomeM} · toque para abrir</small></div>${listaRegioesFat('g-reg', 30)}`;
+  return { pags: [['hoje', 'Dia', dia], ['mes', 'Mês', mes], ['regioes', 'Regiões', regioes]] };
+}
+function gCarteira() {
+  const T = D.G, nomeM = MESES_L[dt(D.hoje).getUTCMonth()];
+  if (!T.completo) return geralEsperando();
+  const fp = T.cart ? T.pos / T.cart : 0;
+  const ls = R.setores.map(s => { const p = T.reg.mes.get(s.cod) || 0, c = T.reg.cart.get(s.cod) || 0; return { s, p, c, f: c ? p / c : 0 }; })
+    .filter(x => x.c || x.p).sort((a, b) => b.f - a.f);
+  const rows = ls.map(x => `
+      <button type="button" class="row" data-a="setor" data-v="${x.s.cod}">
+        <span class="t">${esc(x.s.nome)}</span><span class="r">${pct(x.f, 0)}</span>
+        <span class="sub full">${nf0.format(x.p)} positivados de ${nf0.format(x.c)} cadastrados</span><span class="full">${bar(x.f, 'gold')}</span>
+      </button>`);
+  return `
+    <div class="kpis k2">${kpi('Positivação', pct(fp, 0), `${nf0.format(T.pos)} de ${nf0.format(T.cart)} clientes da carteira`, 'hero')}${kpi('Positivados', nf0.format(T.pos), 'com pedido em ' + nomeM)}${kpi('Cadastrados', nf0.format(T.cart), 'na carteira (146)')}</div>
+    <div class="h">Por região <small>positivação em ${nomeM} · toque para abrir</small></div>
+    <div class="list" data-lista="g-cart">${rows.length ? limitar(rows, 8, 'g-cart', 'Carteira por região') : vazio('Nenhuma região com carteira.')}</div>
+    <div class="nota">A lista de clientes é de cada região: toque numa região para ver os clientes dela. No total, cliente que aparece em duas regiões conta uma vez só.</div>`;
+}
+/* Curva ABC das REGIÕES pelo faturado do mês: A até 80% do total, B até 95%, C o resto (a de cliente e produto é por região) */
+function gAbc() {
+  const T = D.G, nomeM = MESES_L[dt(D.hoje).getUTCMonth()];
+  const i0 = T.i0, ls = R.setores.map(s => ({ s, v: +s.venda[i0] || 0 })).filter(x => x.v > 0).sort((a, b) => b.v - a.v);
+  const tot = soma(ls, x => x.v) || 1; let acc = 0;
+  const rows = ls.map(x => {
+    const cl = acc < .8 ? 'A' : acc < .95 ? 'B' : 'C'; acc += x.v / tot;
+    return `
+      <button type="button" class="row" data-a="setor" data-v="${x.s.cod}">
+        <span class="t">${esc(x.s.nome)}</span><span class="r">${brlK(x.v)}</span>
+        <span class="sub">${pct(x.v / tot)} do total · acumulado ${pct(acc, 0)}</span><span class="sub r"><span class="pill ${cl === 'C' ? '' : cl}">Classe ${cl}</span></span>
+        <span class="full">${bar(x.v / ls[0].v, 'gold')}</span>
+      </button>`;
+  });
+  return `
+    <div class="h">Curva ABC das regiões <small>faturado em ${nomeM}</small></div>
+    <div class="list" data-lista="g-abc">${rows.length ? limitar(rows, 30, 'g-abc', 'Curva ABC das regiões') : vazio('Nenhuma região com faturado no mês.')}</div>
+    <div class="nota">Classe A: as regiões que somam até 80% do faturado; B: até 95%; C: o resto. A curva de clientes e de produtos é de cada região: toque numa região para abrir.</div>`;
+}
+function gInad() {
+  const T = D.G;
+  if (!T.completo) return geralEsperando();
+  const ls = R.setores.slice().sort((a, b) => b.vencido - a.vencido), mx = ls.length ? ls[0].vencido || 1 : 1;
+  const rows = ls.filter(x => x.vencido || x.juridico).map(x => `
+      <button type="button" class="row" data-a="setor" data-v="${x.cod}">
+        <span class="t">${esc(x.nome)}</span><span class="r">${brlK(x.vencido)}</span>
+        <span class="sub full">${nf0.format(x.clientes)} clientes${x.juridico ? ' · jurídico ' + brlK(x.juridico) : ''}</span><span class="full">${bar(x.vencido / mx, 'bad')}</span>
+      </button>`);
+  return `
+    <div class="kpis k2">${kpi('Vencido', brlK(T.venc), 'em aberto hoje', 'perigo wide')}${kpi('Clientes', nf0.format(T.cliVenc), 'com título vencido')}${kpi('Regiões', nf0.format(ls.filter(x => x.vencido > 0.005).length), 'com título vencido')}</div>
+    ${T.jur ? `<div class="faixa">Jurídico e perdas: ${brl(T.jur)}, fora da soma acima.</div>` : ''}
+    <div class="h">Por região <small>toque para ver os clientes</small></div>
+    <div class="list" data-lista="g-inad">${rows.length ? limitar(rows, 8, 'g-inad', 'Vencido por região') : vazio('Nenhum título vencido. 👏')}</div>`;
+}
+function gDev() {
+  const DV = S.d, idx = mesesDoPeriodo(DV.per).map(m => R.meses.indexOf(m)).filter(i => i >= 0);
+  const ls = R.setores.map(s => { const v = idx.reduce((a, i) => a + (+s.dev[i] || 0), 0), vd = idx.reduce((a, i) => a + (+s.vendaBruta[i] || 0), 0); return { s, v, vd, p: vd ? v / vd : 0 }; });
+  const tot = soma(ls, x => x.v), venda = soma(ls, x => x.vd);
+  const [d1, d2] = periodo(DV.per);
+  const com = ls.filter(x => x.v > 0.005).sort((a, b) => b.p - a.p), mx = Math.max(...com.map(x => x.p)) || 1;
+  const rows = com.map(x => `
+      <button type="button" class="row" data-a="setor" data-v="${x.s.cod}">
+        <span class="t">${esc(x.s.nome)}</span><span class="r">${pct(x.p)}</span>
+        <span class="sub full">${brl(x.v)} devolvidos de ${brlK(x.vd)} vendidos</span><span class="full">${bar(x.p / mx, 'bad')}</span>
+      </button>`);
+  const topo = chips('d-per', DV.per, [['mes', 'Mês atual'], ['ant', 'Mês anterior'], ['3m', 'Últimos 3 meses']], 'rola');
+  return topo + `
+    <div class="kpis k2">${kpi('Devolvido', brlK(tot), `${pct(venda ? tot / venda : 0)} da venda de ${dm(d1)} a ${dm(d2)}`, 'perigo wide')}${kpi('Venda', brlK(venda), 'antes das devoluções')}${kpi('Regiões', nf0.format(com.length), 'com devolução')}</div>
+    <div class="h">Por região <small>% sobre a venda · toque para ver os motivos</small></div>
+    <div class="list" data-lista="g-dev">${rows.length ? limitar(rows, 8, 'g-dev', 'Devolução por região') : vazio('Nenhuma devolução no período. 👏')}</div>`;
+}
+const TELAS_GERAL = { resumo: gResumo, vendas: gVendas, carteira: gCarteira, abc: gAbc, inad: gInad, dev: gDev };
+
 /* ---------------- telas: montagem ---------------- */
 const ICON = {
   resumo: '<rect x="3.5" y="3.5" width="7" height="8" rx="2"/><rect x="13.5" y="3.5" width="7" height="5" rx="2"/><rect x="13.5" y="11.5" width="7" height="9" rx="2"/><rect x="3.5" y="14.5" width="7" height="6" rx="2"/>',
@@ -1229,7 +1445,7 @@ function montarTela() {
     if (memo.base !== base) { memo.base = base; memo.m.clear(); }
     const k = chaveMemo();
     if (k && memo.m.has(k)) return memo.m.get(k);
-    const tela = { chave: t[0], titulo: t[1], raiz: true, html: embrulhar(t[0], t[2]()) };
+    const tela = { chave: t[0], titulo: t[1], raiz: true, html: embrulhar(t[0], (ehGeral() ? TELAS_GERAL[t[0]] : t[2])()) };
     if (k) memo.m.set(chaveMemo() || k, tela);   // a chave depois do cálculo (ele completa padrões, como o dia de hoje)
     return tela;
   }
@@ -1256,7 +1472,8 @@ function dataLonga() {
 }
 function setorHtml() {
   const nome = D ? D.setor.nome : '…';
-  if (ehGerente() && R) return `<button type="button" class="setor-pill" data-a="setores" aria-label="Trocar de setor (agora ${esc(nome)})">${ic('pin')}<span>${esc(nome)}</span>${ic('baixo', 'seta')}</button>`;
+  if (ehGerente() && R && ehGeral()) return `<button type="button" class="setor-pill geral" data-a="setores" aria-label="Trocar de região (agora o GERAL de ${regioesN(D.G.n)})">${ic('layers')}<span>GERAL · ${regioesN(D.G.n)}</span>${ic('baixo', 'seta')}</button>`;
+  if (ehGerente() && R) return `<button type="button" class="setor-pill" data-a="setores" aria-label="Trocar de região (agora ${esc(nome)})">${ic('pin')}<span>${esc(nome)}</span>${ic('baixo', 'seta')}</button>`;
   if (D && ehRca()) return `<span class="setor-pill fixo">${ic('user')}<span>RCA ${D.codusur} · ${esc(D.rcaNome || '')}</span></span>`;
   return `<span class="setor-pill fixo" title="Sua região">${ic('pin')}<span>${esc(nome)}</span></span>`;
 }
@@ -1291,7 +1508,7 @@ function barra(t) {
     ? `<button type="button" class="voltar" data-a="voltar" aria-label="Voltar para ${esc(ant)}">${ic('back')}<span>${esc(curto(ant, 16))}</span></button>`
     : '<img class="logo topo" src="logo-lube-mini.png" alt="Lube Distribuidora" width="89" height="30">';
   $('#nav-titulo').textContent = t.titulo || '';
-  $('#btn-busca').hidden = t.chave === 'busca' || !D;
+  $('#btn-busca').hidden = t.chave === 'busca' || !D || ehGeral();   // no GERAL não há lista de clientes (é por região)
   $('#conta-btn').textContent = iniciais(conta && (conta.nome || conta.email));
   // ponto vermelho na conta enquanto houver versão nova do app para instalar
   $('#conta-btn').classList.toggle('novo', !!appNovo);
@@ -1582,14 +1799,19 @@ function abrirMenu() {
 }
 function abrirSetores() {
   if (!R) return;
-  const i0 = R.meses.length - 1;
+  const i0 = R.meses.length - 1, fatTodas = soma(R.setores, s => +s.venda[i0] || 0);
+  // 1.12: o GERAL no topo, em destaque dourado (Júlio), com a soma de todas as regiões que o gestor vê
   abrirFolha(`
     <div class="alca" aria-hidden="true"></div>
-    <div class="folha-tit">Escolha o setor</div>
+    <div class="folha-tit">Escolha a região</div>
+    <button type="button" class="row geral-op${ehGeral() ? ' sel' : ''}" data-a="setor" data-v="GERAL">
+      <span class="t">${ic('layers')}GERAL</span><span class="r">${ehGeral() ? ic('check', 'ok-ic') : brlK(fatTodas)}</span>
+      <span class="sub full">${R.setores.length === 1 ? 'A região que você vê' : `A soma das ${R.setores.length} regiões que você vê`}, ao vivo</span>
+    </button>
     <div class="list">${R.setores.slice().sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')).map(s => `
       <button type="button" class="row${D && s.cod === D.setor.cod ? ' sel' : ''}" data-a="setor" data-v="${s.cod}">
         <span class="t">${esc(s.nome)}</span><span class="r">${D && s.cod === D.setor.cod ? ic('check', 'ok-ic') : brlK(s.venda[i0])}</span>
-      </button>`).join('')}</div>`, 'Escolha o setor');
+      </button>`).join('')}</div>`, 'Escolha a região');
 }
 /* versão nova do app: ALERTA por cima de tudo (1.3; antes era só uma faixa no começo da tela, que sumia atrás do
    cabeçalho ao rolar — Júlio, 2026-10-22). Aparece uma vez por abertura do app; "Depois" fecha, e o ponto vermelho na
@@ -1745,7 +1967,7 @@ async function buscarHoje(pedidos) {
   if (!j.igual && (j.setor || j.resumo)) {
     VIVO.versao = j.versao;
     if (j.setor) { VIVO.hoje = j.setor; if (D) { aplicarHoje(D, j.setor, j.versao); mudou = true; } }
-    if (j.resumo && ehGerente()) { VIVO.resumo = j.resumo; R = montarResumo(j.resumo); mudou = true; }
+    if (j.resumo && ehGerente()) { VIVO.resumo = j.resumo; R = montarResumo(j.resumo); if (ehGeral()) D = montarGeral(); mudou = true; }
   }
   if (D) aplicarVivo(D);
   if (mudou || VIVO.pendente) redesenharAoVivo();
@@ -1797,10 +2019,14 @@ async function atualizarAgora() {
 function montarResumo(p) {
   // 1.6: venda = o FATURADO (total líquido, [11]); vendaBruta = a venda antes da devolução ([2]); margem = massa [13] ÷
   // total líquido sem ST [12]. Resumo de antes da 1.6 (sem [11]): tudo volta à venda e ao custo de antes.
-  return { meses: p.meses || [], hoje: p.hoje, gerado: p.gerado_em || String(Date.now()), setores: (p.setores || []).map(s => {
-    const vb = s[2] || [], c = s[3] || [];
+  // 1.12 (GERAL): [14] digitado de hoje e do mês, [15] faturado do mês anterior até o mesmo dia, [16] faturado por dia do mês,
+  // [17] dias úteis da meta que faltam, e 'geral' (clientes contados uma vez só); resumo de antes da 1.12: g = null
+  return { meses: p.meses || [], hoje: p.hoje, gerado: p.gerado_em || String(Date.now()), geral: p.geral || null, setores: (p.setores || []).map(s => {
+    const vb = s[2] || [], c = s[3] || [], g = Array.isArray(s[14]) ? s[14] : null;
     return { cod: s[0], nome: s[1], venda: s[11] || vb, vendaBruta: vb, tls: s[12] || vb, massa: s[13] || vb.map((v, i) => v - (c[i] || 0)),
-             dev: s[4], vencido: +s[5] || 0, juridico: +s[6] || 0, clientes: s[7] || 0, pos: s[8] || [], meta: s[9] || null, metaAte: s[10] || [] };
+             dev: s[4], vencido: +s[5] || 0, juridico: +s[6] || 0, clientes: s[7] || 0, pos: s[8] || [], meta: s[9] || null, metaAte: s[10] || [],
+             g: g && { vh: +g[0] || 0, nh: +g[1] || 0, v7: +g[2] || 0, vm: +g[3] || 0, nm: +g[4] || 0, sem: +g[5] || 0 },
+             fatAnt: +s[15] || 0, fatDia: s[16] || [], uteis: +s[17] || 0 };
   }) };
 }
 async function carregarTudo() {
@@ -1808,12 +2034,13 @@ async function carregarTudo() {
   try {
     if (ehGerente()) {
       // o resumo do dia (ao vivo) vale sobre o da manhã quando é mais novo
-      await abrirEscopo('G', p => { R = montarResumo(VIVO.resumo && String(VIVO.resumo.gerado_em || '') > String(p.gerado_em || '') ? VIVO.resumo : p); if (D) render(); });
+      await abrirEscopo('G', p => { R = montarResumo(VIVO.resumo && String(VIVO.resumo.gerado_em || '') > String(p.gerado_em || '') ? VIVO.resumo : p); if (ehGeral()) D = montarGeral(); if (D) render(); });
       if (!R || !R.setores.length) throw new Error('O resumo dos setores ainda não está pronto.');
-      let alvo = null;
-      try { alvo = Number(localStorage.getItem('sup-lube-setor')); } catch (e) { /* ignora */ }
-      if (!R.setores.some(s => s.cod === alvo)) { const i0 = R.meses.length - 1; alvo = R.setores.slice().sort((a, b) => b.venda[i0] - a.venda[i0])[0].cod; }
-      await abrirSetor(alvo);
+      // 1.12: abre no que ficou escolhido; sem escolha (ou região que saiu), no GERAL
+      let salvo = null;
+      try { salvo = localStorage.getItem('sup-lube-setor'); } catch (e) { /* ignora */ }
+      const alvo = Number(salvo);
+      if (salvo !== 'GERAL' && R.setores.some(s => s.cod === alvo)) await abrirSetor(alvo); else abrirGeral();
     } else if (conta.tipo === 'supervisor') {
       await abrirSetor(Number(conta.codsupervisor));
     } else {
@@ -1832,12 +2059,21 @@ async function abrirSetor(cod) {
   try { localStorage.setItem('sup-lube-setor', String(cod)); } catch (e) { /* ignora */ }
   await abrirEscopo(escopo, (p, atualizou) => { if (S.escopo !== escopo) return; D = montar(p); render(); aquecer(); if (atualizou) { S.mudou = true; toast('Dados atualizados.'); } });
 }
+/* 1.12: o GERAL é montado do resumo entre setores que o gestor já tem (R): abre na hora, sem baixar nada */
+function abrirGeral() {
+  if (!R) return;
+  S.escopo = 'GERAL';
+  try { localStorage.setItem('sup-lube-setor', 'GERAL'); } catch (e) { /* ignora */ }
+  D = montarGeral();
+  render(); aquecer();
+}
 function trocarSetor(cod) {
   S.v.rca = 0; S.c.rca = 0; S.c.cid = ''; S.c.bai = ''; S.a.rca = 0; S.i.open = 0; S.d.open = 0; S.k.raw = '';
   S.pilha = []; S.rolagens = [];
   if (baixando) return;
+  if (cod === 'GERAL') { abrirGeral(); buscarHoje().catch(() => { /* o resumo ao vivo vem na próxima pergunta */ }); return; }
   baixando = true;
-  abrirSetor(cod).catch(e => toast(e.message || 'Não consegui abrir o setor.', true))
+  abrirSetor(cod).catch(e => toast(e.message || 'Não consegui abrir a região.', true))
     .finally(() => { baixando = false; buscarHoje().catch(() => { /* o pacote do dia do setor novo vem na próxima pergunta */ }); });
 }
 
@@ -1845,7 +2081,7 @@ function trocarSetor(cod) {
 document.addEventListener('click', e => {
   if (e.target.closest('#veu')) { fecharFolha(); return; }
   if (e.target.closest('#conta-btn')) { abrirMenu(); return; }
-  if (e.target.closest('#btn-busca')) { if (D) empurrar({ t: 'busca', titulo: 'Clientes' }); return; }
+  if (e.target.closest('#btn-busca')) { if (D && !ehGeral()) empurrar({ t: 'busca', titulo: 'Clientes' }); return; }
   if (e.target.closest('#when')) { if (!baixando) atualizarAgora(); return; }
   const pf = e.target.closest('#folha [data-perfil]'); if (pf) { escolherPerfil(pf.dataset.perfil); return; }
   const b = e.target.closest('[data-a]'); if (!b) return;
@@ -1859,7 +2095,7 @@ document.addEventListener('click', e => {
     case 'cli': S.pag.cli = 'resumo'; empurrar({ t: 'cli', cod: +v, titulo: cliNome(+v) }); return;
     case 'lista': empurrar({ t: 'lista', id: v, titulo: b.dataset.t || 'Lista' }); return;
     case 'setores': abrirSetores(); return;
-    case 'setor': fecharFolha(); trocarSetor(+v); return;
+    case 'setor': fecharFolha(); trocarSetor(v === 'GERAL' ? 'GERAL' : +v); return;
     case 'v-rca': S.v.rca = +v; S.pag.vendas = 'hoje'; if (!naRaiz()) render({ anim: 'pag-' }); return;
     case 'v-q': if (v) { S.v.q = v; const [d1, d2] = periodo(v); S.v.de = d1; S.v.ate = d2; } else S.v.q = ''; break;
     case 'v-graf': S.v.graf = v; break;
@@ -2093,7 +2329,8 @@ window.SUP_APP = {
     const trocou = !conta || conta.email !== c.email || conta.tipo !== c.tipo || conta.codusur !== c.codusur || conta.codsupervisor !== c.codsupervisor;
     conta = c;
     // a tela do app entra depois da abertura de 3 s com a logo; o pacote já começa a carregar por trás
-    const mostrar = () => { $('#tela-login').hidden = true; $('#tela-app').hidden = false; aoRolar(); };
+    // 1.12: a tela montada por trás da abertura (o GERAL abre na hora) não tinha como medir os números: encaixa ao aparecer
+    const mostrar = () => { $('#tela-login').hidden = true; $('#tela-app').hidden = false; aoRolar(); encaixar($('#view')); };
     if (window.SUP_ABERTURA) window.SUP_ABERTURA.sair(mostrar); else { $('#tela-carregando').hidden = true; mostrar(); }
     montarDock();
     if (trocou) { D = null; R = null; S.escopo = null; S.pilha = []; S.adm.dados = null; render({ topo: true }); carregarTudo(); }
