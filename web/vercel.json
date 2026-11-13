@@ -6,7 +6,8 @@
   ],
   "functions": {
     "api/dados.js": { "maxDuration": 30 },
-    "api/acessos.js": { "maxDuration": 30 }
+    "api/acessos.js": { "maxDuration": 30 },
+    "api/geral.js": { "maxDuration": 30 }
   },
   "headers": [
     {

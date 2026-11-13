@@ -81,6 +81,8 @@ const S = {
   a: { per: 'mes', rca: 0 },
   i: { open: 0 },
   d: { per: 'mes', open: 0 },
+  // 1.13 (GERAL): Resumo por região ou por estado, o estado aberto e a página Não compram (clientes ou por região)
+  g: { vis: 'reg', est: '', nao: 'cli' },
   adm: { filtro: 'pendente', dados: null, carregando: false, erro: '' },
   contado: null, mudou: false, convite: '',
 };
@@ -1243,19 +1245,55 @@ const pillMeta = s => { const i0 = R.meses.length - 1, mt = s.meta ? +s.meta[i0]
 const regioesN = n => n + (n === 1 ? ' região' : ' regiões');
 const notaGeral = () => `<div class="nota">GERAL = a soma ${D.G.n === 1 ? 'da região' : 'das ' + D.G.n + ' regiões'} que você vê, ao vivo. Cliente que aparece em duas regiões conta uma vez só no total, como na 146. Toque numa região para abrir ela.</div>`;
 /* regiões por faturado do mês, com a % da meta: Resumo e Vendas */
-function listaRegioesFat(id, lim) {
-  const i0 = R.meses.length - 1, ls = R.setores.slice().sort((a, b) => (+b.venda[i0] || 0) - (+a.venda[i0] || 0));
-  const mx = ls.length ? Math.max(1, +ls[0].venda[i0] || 0) : 1;
-  const rows = ls.map(s => {
-    const i = i0, mt = s.meta ? +s.meta[i] || 0 : 0, v = +s.venda[i] || 0, tl = +s.tls[i] || 0;
-    return `
-      <button type="button" class="row" data-a="setor" data-v="${s.cod}">
+const porFat = (a, b) => { const i0 = R.meses.length - 1; return (+b.venda[i0] || 0) - (+a.venda[i0] || 0); };
+function linhaRegiaoFat(s, mx, filho) {
+  const i = R.meses.length - 1, mt = s.meta ? +s.meta[i] || 0 : 0, v = +s.venda[i] || 0, tl = +s.tls[i] || 0;
+  return `
+      <button type="button" class="row" data-a="setor" data-v="${s.cod}"${filho ? ' data-filho' : ''}>
         <span class="t">${esc(s.nome)}</span><span class="r">${brlK(v)}</span>
         <span class="sub">${nf0.format(D.G.reg.mes.get(s.cod) || 0)} positivados · <span class="nw">margem ${pctM(tl ? (+s.massa[i] || 0) / tl : 0)}</span></span><span class="sub r">${pillMeta(s)}</span>
         <span class="full">${bar(mt ? v / mt : v / mx, 'gold')}</span>
       </button>`;
+}
+function listaRegioesFat(id, lim) {
+  const i0 = R.meses.length - 1, ls = R.setores.slice().sort(porFat);
+  const mx = ls.length ? Math.max(1, +ls[0].venda[i0] || 0) : 1;
+  return `<div class="list" data-lista="${id}">${limitar(ls.map(s => linhaRegiaoFat(s, mx)), lim, id, 'Faturado por região')}</div>`;
+}
+/* 1.13 (Júlio: "além de mostrar quanto vendeu em todas as regiões, quero ver também por estado ... total ES, BA e RJ (no
+   caso o gerente vê as regiões dele)"): os estados das regiões que o gestor vê, pelo nome da região (como o recorte da
+   1.11.6), e "Sem estado" para Administração, Inativo, Lube Distribuidora e Venda Interna. Clientes contados uma vez só
+   no estado. O toque abre as regiões do estado. */
+function estadosGeral() {
+  const i0 = R.meses.length - 1, gl = R.geral || {}, grupos = new Map();
+  for (const s of R.setores) { const e = estadoDaRegiao(s.nome); if (!grupos.has(e)) grupos.set(e, []); grupos.get(e).push(s); }
+  const uniaoDe = (k, cods) => soma((gl[k] || []).filter(x => (x[0] || []).some(c => cods.has(c))), x => +x[1] || 0);
+  return UFS.concat('OUTRAS').filter(e => grupos.has(e)).map(e => {
+    const ss = grupos.get(e).slice().sort(porFat), cods = new Set(ss.map(s => s.cod));
+    const x = { e, ss, fat: 0, tls: 0, ms: 0, meta: 0, fatMeta: 0, metaAte: 0, comMeta: 0, vh: 0, nh: 0 };
+    for (const s of ss) {
+      const f = +s.venda[i0] || 0, mt = s.meta ? +s.meta[i0] || 0 : 0, g = s.g || {};
+      x.fat += f; x.tls += +s.tls[i0] || 0; x.ms += +s.massa[i0] || 0; x.vh += g.vh || 0; x.nh += g.nh || 0;
+      if (mt) { x.meta += mt; x.fatMeta += f; x.metaAte += +s.metaAte[i0] || 0; x.comMeta++; }
+    }
+    x.pos = uniaoDe('cli_mes', cods); x.cart = uniaoDe('cli_cart', cods);
+    return x;
   });
-  return `<div class="list" data-lista="${id}">${limitar(rows, lim, id, 'Faturado por região')}</div>`;
+}
+function listaEstados() {
+  const ls = estadosGeral(), mx = Math.max(1, ...ls.map(x => x.fat)), i0 = R.meses.length - 1;
+  const mxR = Math.max(1, ...R.setores.map(s => +s.venda[i0] || 0));
+  return `<div class="list" data-lista="g-est">${ls.map(x => {
+    const aberto = S.g.est === x.e, parcial = x.comMeta && x.comMeta < x.ss.length;
+    const pill = x.meta ? `<span class="pill ${situacaoMeta(x.fatMeta, x.meta, x.metaAte)[0]}">${pct(x.fatMeta / x.meta, 0)} da meta${parcial ? ` (${x.comMeta} de ${x.ss.length})` : ''}</span>` : '<span class="pill">sem meta</span>';
+    return `
+      <button type="button" class="row est-row" data-a="g-est" data-v="${x.e}" aria-expanded="${aberto}">
+        <span class="t">${x.e === 'OUTRAS' ? 'Sem estado' : x.e} <span class="code">${regioesN(x.ss.length)}</span></span><span class="r">${brlK(x.fat)}</span>
+        <span class="sub">${nf0.format(x.pos)} positivados · <span class="nw">margem ${pctM(x.tls ? x.ms / x.tls : 0)}</span> · <span class="nw">hoje ${brlK(x.vh)}</span></span><span class="sub r">${pill}</span>
+        <span class="full">${bar(x.fat / mx, 'gold')}</span>
+        <span class="sub full est-ver">${aberto ? 'fechar ▲' : 'ver as regiões ▼'}</span>
+      </button>${aberto ? x.ss.map(s => linhaRegiaoFat(s, mxR, true)).join('') : ''}`;
+  }).join('')}</div>`;
 }
 
 function gResumo() {
@@ -1298,8 +1336,9 @@ function gResumo() {
       <button type="button" class="tile atencao" data-a="ir" data-v="dev:resumo"><span class="cartao-rot">${ic('ret')}Devolução</span><span class="v">${pct(T.vb ? T.dev / T.vb : 0)}</span><span class="d">${brlK(T.dev)} devolvidos no mês</span></button>
       <button type="button" class="tile" data-a="ir" data-v="vendas:regioes"><span class="cartao-rot">${ic('layers')}Maior região</span><span class="v txt">${maior ? esc(maior.nome) : '—'}</span><span class="d">${maior ? brlK(+maior.venda[T.i0] || 0) + ' · ' + regioesN(T.n) + ' no geral' : ''}</span></button>
     </div>
-    <div class="h">Por região <small>faturado em ${nomeM} · toque para abrir</small></div>
-    ${listaRegioesFat('g-res-reg', 6)}
+    <div class="h">Por ${S.g.vis === 'est' ? 'estado' : 'região'} <small>faturado em ${nomeM}${S.g.vis === 'est' ? '' : ' · toque para abrir'}</small></div>
+    ${chips('g-vis', S.g.vis === 'est' ? 'est' : 'reg', [['reg', 'Regiões'], ['est', 'Estados']])}
+    ${S.g.vis === 'est' ? listaEstados() : listaRegioesFat('g-res-reg', 6)}
     ${notaGeral()}
   </div>`;
 }
@@ -1343,11 +1382,75 @@ function gCarteira() {
         <span class="t">${esc(x.s.nome)}</span><span class="r">${pct(x.f, 0)}</span>
         <span class="sub full">${nf0.format(x.p)} positivados de ${nf0.format(x.c)} cadastrados</span><span class="full">${bar(x.f, 'gold')}</span>
       </button>`);
-  return `
+  const posPag = () => `
     <div class="kpis k2">${kpi('Positivação', pct(fp, 0), `${nf0.format(T.pos)} de ${nf0.format(T.cart)} clientes da carteira`, 'hero')}${kpi('Positivados', nf0.format(T.pos), 'com pedido em ' + nomeM)}${kpi('Cadastrados', nf0.format(T.cart), 'na carteira (146)')}</div>
     <div class="h">Por região <small>positivação em ${nomeM} · toque para abrir</small></div>
     <div class="list" data-lista="g-cart">${rows.length ? limitar(rows, 8, 'g-cart', 'Carteira por região') : vazio('Nenhuma região com carteira.')}</div>
-    <div class="nota">A lista de clientes é de cada região: toque numa região para ver os clientes dela. No total, cliente que aparece em duas regiões conta uma vez só.</div>`;
+    <div class="nota">A lista dos que compram é de cada região: toque numa região para ver os clientes dela. No total, cliente que aparece em duas regiões conta uma vez só.</div>`;
+  // 1.13: Não compram (a lista vem da /api/geral quando o GERAL abre; o número da página aparece quando ela chega)
+  if (!GN.carregando && (!GN.dados || Date.now() - GN.em > GN_VALIDADE)) carregarNaoGeral();
+  const N = GN.dados;
+  const naoPag = () => {
+    if (!N) return GN.erro ? `<div class="msg bad">${esc(GN.erro)}</div><button class="btn sec" type="button" data-a="g-nao-de-novo">Tentar de novo</button>`
+      : `<div class="faixa info">Buscando os clientes da carteira sem pedido em ${nomeM}, em todas as regiões que você vê…</div>${ESQ}`;
+    const nomeReg = cod => { const s = R.setores.find(x => x.cod === cod); return s ? s.nome : 'Região ' + cod; };
+    const H = D.hoje, modo = S.g.nao === 'reg' ? 'reg' : 'cli';
+    const linhaCli = c => `
+      <button type="button" class="row" data-a="g-cli" data-v="${c[0]}" data-r="${c[4]}">
+        <span class="t">${esc(titulo(c[1]) || 'Cliente ' + c[0])} <span class="code">${c[0]}</span></span>
+        <span class="r">${+c[7] ? brl(+c[7]) + '/mês' : '—'}</span>
+        <span class="sub">${esc(nomeReg(c[4]))}${c[2] ? ' · ' + esc(titulo(c[2])) : ''}${c[6] ? ' · ' + esc(titulo(c[6])) : ''}</span>
+        <span class="sub r">${c[8] != null ? `última ${dm(c[8])} <span class="pill ${H - c[8] > 60 ? 'bad' : 'warn'}">${H - c[8]} dias</span>` : 'sem pedido'}</span>
+      </button>`;
+    const regs = (N.regioes || []).map(([cod, nao, cart]) => ({ cod, nao, cart, f: cart ? nao / cart : 0 })).filter(x => x.cart).sort((a, b) => b.nao - a.nao);
+    const mxR = Math.max(1, ...regs.map(x => x.nao));
+    const linhaReg = x => `
+      <button type="button" class="row" data-a="g-nao-reg" data-v="${x.cod}">
+        <span class="t">${esc(nomeReg(x.cod))}</span><span class="r">${nf0.format(x.nao)}</span>
+        <span class="sub full">${pct(x.f, 0)} da carteira de ${nf0.format(x.cart)} sem pedido em ${nomeM}</span><span class="full">${bar(x.nao / mxR, 'bad')}</span>
+      </button>`;
+    const cl = N.clientes || [];
+    const mais = N.nao > cl.length ? vazio(`Mostrando os ${nf0.format(cl.length)} de maior potencial, de ${nf0.format(N.nao)}. Para ver os outros, toque em Por região e abra a região.`) : '';
+    return `
+    <div class="kpis k2">${kpi('Não compram', nf0.format(N.nao), `de ${nf0.format(N.cart)} clientes da carteira, sem pedido em ${nomeM}`, 'perigo wide')}${kpi('Potencial', brlK(N.pot), 'por mês, média dos 3 meses anteriores')}${kpi('Regiões', nf0.format(regs.filter(x => x.nao).length), 'com cliente sem pedido')}</div>
+    ${chips('g-nao', modo, [['cli', 'Clientes'], ['reg', 'Por região']])}
+    ${modo === 'cli' ? `<div class="h">Sem pedido <small>${nomeM} até hoje · maior potencial primeiro</small></div>
+      <div class="list" data-lista="g-nao-cli">${cl.length ? limitar(cl.map(linhaCli), 8, 'g-nao-cli', 'Não compram', mais, N.nao) : vazio('Todos os clientes da carteira tiveram pedido. 👏')}</div>`
+      : `<div class="h">Por região <small>toque para ver os clientes da região</small></div>
+      <div class="list" data-lista="g-nao-reg">${regs.length ? limitar(regs.map(linhaReg), 30, 'g-nao-reg', 'Não compram por região') : vazio('Nenhuma região com carteira.')}</div>`}
+    <div class="nota">Como na Carteira de cada região, no mês: carteira = clientes com um RCA da região como RCA 1 ou 2; não compra = sem pedido no mês. No total, cliente de duas regiões conta uma vez só; em Por região, cada região conta os dela. Toque no cliente para abrir a ficha dele na região.</div>`;
+  };
+  return { pags: [['pos', 'Positivação', posPag], ['nao', `Não compram${N ? `<span class="n">${nf0.format(N.nao)}</span>` : ''}`, naoPag]] };
+}
+/* 1.13: a lista do Não compram do GERAL (/api/geral). Fica guardada uns minutos; ao chegar, a tela se refaz sozinha */
+const GN = { dados: null, carregando: false, erro: '', em: 0 }, GN_VALIDADE = 3 * 60e3;
+async function carregarNaoGeral() {
+  if (GN.carregando) return;
+  GN.carregando = true; GN.erro = '';
+  try {
+    const t = await A.token();
+    const r = await fetch((CFG.api || '') + '/api/geral?tipo=nao', { headers: { Authorization: 'Bearer ' + t }, cache: 'no-store' });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.mensagem || 'Não consegui buscar os clientes sem pedido (' + r.status + ').');
+    GN.dados = j; GN.em = Date.now();
+  } catch (e) { GN.erro = e.message || String(e); GN.em = Date.now(); }
+  GN.carregando = false;
+  memo.base = '';   // a tela da Carteira guardada já não vale
+  if (ehGeral() && S.tab === 'carteira' && !S.pilha.length) redesenharAoVivo();
+}
+/* o cliente do Não compram do GERAL abre na região dele, com a ficha por cima */
+async function abrirClienteNaRegiao(cod, codcli) {
+  if (baixando) return;
+  limparFiltros();
+  baixando = true;
+  try { await abrirSetor(cod); }
+  catch (e) { toast(e.message || 'Não consegui abrir a região.', true); return; }
+  finally { baixando = false; }
+  buscarHoje().catch(() => { /* o pacote do dia da região vem na próxima pergunta */ });
+  if (S.escopo !== 'S' + cod || !D) return;
+  if (!D.CMAP.get(codcli)) { toast('Esse cliente não está mais na carteira da região.'); return; }
+  S.pag.cli = 'resumo';
+  empurrar({ t: 'cli', cod: codcli, titulo: cliNome(codcli) });
 }
 /* Curva ABC das REGIÕES pelo faturado do mês: A até 80% do total, B até 95%, C o resto (a de cliente e produto é por região) */
 function gAbc() {
@@ -1434,7 +1537,7 @@ const memo = { base: '', m: new Map() };
 function chaveMemo() {
   if (S.pilha.length || LISTA_TODA || !D) return null;
   return [S.tab, S.pag[S.tab], conta && conta.tipo, R ? R.gerado : '', JSON.stringify(S.v), JSON.stringify(S.c),
-    JSON.stringify(S.a), S.i.open, JSON.stringify(S.d)].join('|');
+    JSON.stringify(S.a), S.i.open, JSON.stringify(S.d), JSON.stringify(S.g)].join('|');
 }
 function montarTela() {
   const it = S.pilha[S.pilha.length - 1];
@@ -2067,9 +2170,12 @@ function abrirGeral() {
   D = montarGeral();
   render(); aquecer();
 }
-function trocarSetor(cod) {
+function limparFiltros() {
   S.v.rca = 0; S.c.rca = 0; S.c.cid = ''; S.c.bai = ''; S.a.rca = 0; S.i.open = 0; S.d.open = 0; S.k.raw = '';
   S.pilha = []; S.rolagens = [];
+}
+function trocarSetor(cod) {
+  limparFiltros();
   if (baixando) return;
   if (cod === 'GERAL') { abrirGeral(); buscarHoje().catch(() => { /* o resumo ao vivo vem na próxima pergunta */ }); return; }
   baixando = true;
@@ -2096,6 +2202,13 @@ document.addEventListener('click', e => {
     case 'lista': empurrar({ t: 'lista', id: v, titulo: b.dataset.t || 'Lista' }); return;
     case 'setores': abrirSetores(); return;
     case 'setor': fecharFolha(); trocarSetor(v === 'GERAL' ? 'GERAL' : +v); return;
+    // 1.13 (GERAL): Resumo por região ou estado, o estado aberto, o Não compram e o cliente dele
+    case 'g-vis': S.g.vis = v; S.g.est = ''; break;
+    case 'g-est': S.g.est = S.g.est === v ? '' : v; break;
+    case 'g-nao': S.g.nao = v; break;
+    case 'g-nao-de-novo': GN.em = 0; GN.dados = null; carregarNaoGeral(); break;
+    case 'g-nao-reg': S.tab = 'carteira'; S.pag.carteira = 'nao'; S.c.q = 'mes'; S.c.ref = null; trocarSetor(+v); return;
+    case 'g-cli': abrirClienteNaRegiao(+b.dataset.r, +v); return;
     case 'v-rca': S.v.rca = +v; S.pag.vendas = 'hoje'; if (!naRaiz()) render({ anim: 'pag-' }); return;
     case 'v-q': if (v) { S.v.q = v; const [d1, d2] = periodo(v); S.v.de = d1; S.v.ate = d2; } else S.v.q = ''; break;
     case 'v-graf': S.v.graf = v; break;
@@ -2333,7 +2446,7 @@ window.SUP_APP = {
     const mostrar = () => { $('#tela-login').hidden = true; $('#tela-app').hidden = false; aoRolar(); encaixar($('#view')); };
     if (window.SUP_ABERTURA) window.SUP_ABERTURA.sair(mostrar); else { $('#tela-carregando').hidden = true; mostrar(); }
     montarDock();
-    if (trocou) { D = null; R = null; S.escopo = null; S.pilha = []; S.adm.dados = null; render({ topo: true }); carregarTudo(); }
+    if (trocou) { D = null; R = null; S.escopo = null; S.pilha = []; S.adm.dados = null; GN.dados = null; GN.em = 0; render({ topo: true }); carregarTudo(); }
     else render();
   },
 };

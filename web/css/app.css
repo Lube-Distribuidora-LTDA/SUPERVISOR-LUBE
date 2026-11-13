@@ -584,3 +584,6 @@ mark { background: var(--gold-soft); color: var(--gold-strong); border-radius: 3
 .row.geral-op .sub { color: var(--muted); font-size: 12px; }
 .row.geral-op.sel { box-shadow: inset 4px 0 0 var(--gold), 0 10px 26px -14px rgba(233, 200, 119, .55), var(--shadow); }
 .row.geral-op .r .ic { color: var(--gold); width: 20px; height: 20px; }
+/* 1.13: Resumo do GERAL por estado (o toque abre as regiões do estado) */
+.row.est-row .est-ver { color: var(--accent); font-weight: 700; font-size: 11.5px; }
+.row.est-row[aria-expanded="true"] { background: var(--gold-soft); box-shadow: inset 3px 0 0 var(--gold); }
