@@ -627,4 +627,12 @@ mark { background: var(--gold-soft); color: var(--gold-strong); border-radius: 3
 .folha .row.geral-op { padding: 11px 14px; }
 /* 1.14.1: as escolhas de uma opção só (RCA, cidade, bairro, período) usam a folha da escolha de fornecedor, com a marca redonda */
 .esc-op .marca { border-radius: 50%; }
+/* 1.14.2: Perfil e Região dos cartões de Acessos (pílula do tamanho do campo) e a Região do Novo acesso */
+.fld .pil.campo-esc { height: 40px; border-radius: 20px; padding: 0 12px 0 14px; justify-content: space-between; max-width: 100%; min-width: 0; }
+.fld .pil.campo-esc b { max-width: none; flex: 1 1 auto; min-width: 0; text-align: left; }
+.pil.campo-esc b.vazio, .campo-bt b.vazio { color: var(--muted); font-weight: 600; }
+.grupo .campo .campo-bt { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; width: 100%; height: 48px; padding: 0 14px 0 0; border: 0; background: transparent; color: var(--ink); text-align: left; cursor: pointer; }
+.grupo .campo .campo-bt b { font: 600 15.5px var(--f-body); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.grupo .campo .campo-bt .seta { width: 14px; height: 14px; flex: none; color: var(--gold); }
+.folha .esc-quem { margin: -2px 2px 6px; text-align: center; }
 .forn-op[aria-pressed="true"] .nm { color: var(--gold-strong); font-weight: 700; }

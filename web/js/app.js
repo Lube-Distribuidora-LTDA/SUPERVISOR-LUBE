@@ -1163,6 +1163,86 @@ function marcarEstado(b) {
   box.querySelector('.est-quais').innerHTML = quaisRegioes(e, setores);
 }
 const nPendentes = AD => ((AD && AD.contas) || []).filter(c => c.situacao === 'pendente').length + convitesAguardando(AD).length;
+/* 1.14.2 (Júlio, 2026-11-16: "Sim, padronizar"): o Perfil e a Região dos cartões de Acessos e a Região do Novo acesso
+   saem da lista do celular e abrem a mesma folha das outras escolhas (1.14.1). O valor fica num campo escondido com o
+   mesmo data-campo que o Salvar, o Liberar e o Salvar o convite já liam; trocado e ainda não salvo, o botão fica dourado. */
+const PERFIS = [['supervisor', 'Supervisor (só a região)'], ['gerente', 'Gestor (todas ou alguns estados)']];
+function nomeRegiaoAdm(cod) {
+  if (!cod) return '';
+  const s = ((S.adm.dados && S.adm.dados.setores) || []).find(x => String(x[0]) === String(cod));
+  return s ? s[1] : 'região ' + cod;
+}
+// no cartão o perfil vai curto (dois campos lado a lado); a explicação de cada um fica na folha
+const PERFIL_CURTO = { supervisor: 'Supervisor', gerente: 'Gestor', rca: 'RCA' };
+const rotuloEsc = (campo, v) => campo === 'tipo' ? (PERFIL_CURTO[v] || 'Supervisor') : (nomeRegiaoAdm(v) || 'Escolha a região');
+// "Nesta região: ..." do Novo acesso, refeito quando a região muda
+function nestaRegiao(cod) {
+  const AD = S.adm.dados || {};
+  const ja = cod ? (AD.contas || []).filter(c => c.tipo === 'supervisor' && c.codsupervisor === cod && c.situacao === 'liberado') : [];
+  const conv = cod ? (AD.convites || []).filter(v => v.codsupervisor === cod && v.situacao === 'aguardando') : [];
+  return ja.length || conv.length ? `Nesta região: ${[...ja.map(c => esc(c.nome || c.email) + ' (liberado)'), ...conv.map(v => esc(v.nome) + ' (pendente)')].join(', ')}.` : '';
+}
+function campoEsc(campo, atual) {
+  const v = atual == null ? '' : String(atual);
+  return `<button type="button" class="pil forn-pil campo-esc" data-a="adm-esc" data-v="${campo}"><b${v ? '' : ' class="vazio"'}>${esc(rotuloEsc(campo, v))}</b>${ic('baixo', 'seta')}</button>` +
+    `<input type="text" hidden data-campo="${campo}" value="${esc(v)}">`;
+}
+/* a grade de regiões por estado da 1.14.1, com a lista de regiões do administrador; embaixo do nome, quantos
+   supervisores liberados a região já tem */
+function gradeRegioesAdm(atual, acao) {
+  const AD = S.adm.dados || {};
+  const n = cod => (AD.contas || []).filter(c => c.tipo === 'supervisor' && c.codsupervisor === cod && c.situacao === 'liberado').length;
+  return gradeDe((AD.setores || []).map(([cod, nome]) => ({ cod, nome })), atual, acao,
+    s => s.cod === atual ? 'escolhida' : (k => k ? k + (k === 1 ? ' supervisor' : ' supervisores') : 'sem supervisor')(n(s.cod)));
+}
+const rolarAteSel = () => { const f = $('#folha'), sel = f.querySelector('.reg-op.sel, .esc-op[aria-pressed="true"]'); if (sel) f.scrollTop = Math.max(0, sel.offsetTop - f.clientHeight / 2 + sel.offsetHeight / 2); };
+let ESC_ADM = null;   // o cartão e o campo cuja escolha está aberta
+function abrirEscAdm(b) {
+  const card = b.closest('[data-conta], [data-convite]'); if (!card) return;
+  const campo = b.dataset.v, inp = card.querySelector(`[data-campo="${campo}"]`);
+  ESC_ADM = { card, campo };
+  const quem = `<div class="sub esc-quem">${esc(card.querySelector('.topo b').textContent)}</div>`;
+  const cab = r => `<div class="alca" aria-hidden="true"></div><div class="folha-cab"><button type="button" class="link" data-a="fechar-folha">Cancelar</button><b>${r}</b><span></span></div>${quem}`;
+  if (campo === 'tipo') {
+    const ops = inp.value === 'rca' || inp.defaultValue === 'rca' ? [['rca', 'RCA'], ...PERFIS] : PERFIS;
+    abrirFolha(cab('Perfil') + `<div class="list forn-lista">${ops.map(([v, l]) => `
+      <button type="button" class="row forn-op esc-op" data-a="adm-esc-marca" data-v="${v}" aria-pressed="${v === inp.value}">
+        <span class="t"><i class="marca" aria-hidden="true"></i><span class="nm">${esc(l)}</span></span>
+      </button>`).join('')}</div>`, 'Perfil');
+  } else {
+    abrirFolha(cab('Região') + gradeRegioesAdm(+inp.value || null, 'adm-esc-marca'), 'Região');
+  }
+  rolarAteSel();
+}
+function marcarEscAdm(v) {
+  const x = ESC_ADM; ESC_ADM = null; fecharFolha();
+  if (!x || !x.card.isConnected) return;
+  const inp = x.card.querySelector(`[data-campo="${x.campo}"]`), bt = x.card.querySelector(`[data-a="adm-esc"][data-v="${x.campo}"]`);
+  inp.value = v;
+  const b = bt.querySelector('b'); b.textContent = rotuloEsc(x.campo, v); b.classList.toggle('vazio', !v);
+  bt.classList.toggle('on', inp.value !== inp.defaultValue);
+  if (x.campo === 'tipo') x.card.querySelectorAll('[data-so]').forEach(el => { el.hidden = el.dataset.so !== v; });
+}
+/* Novo acesso: a grade de regiões entra no lugar do formulário, na mesma folha (o nome e o e-mail ficam como estão) */
+function abrirRegCadastro() {
+  const f = $('#folha');
+  let sv = $('#cad-reg');
+  if (!sv) { sv = document.createElement('div'); sv.id = 'cad-reg'; f.appendChild(sv); }
+  sv.innerHTML = `<div class="folha-cab"><button type="button" class="link" data-a="cad-reg-voltar">Voltar</button><b>Região</b><span></span></div>${gradeRegioesAdm(+$('#s-setor').value || null, 'cad-reg-marca')}`;
+  $('#f-sup').hidden = true; f.querySelector(':scope > .folha-cab').hidden = true; sv.hidden = false;
+  if (!REDUZ) sv.animate([{ opacity: 0, transform: 'translateX(24px)' }, { opacity: 1, transform: 'none' }], { duration: 260, easing: EASE });
+  f.scrollTop = 0; rolarAteSel();
+}
+function fecharRegCadastro(v) {
+  const f = $('#folha'), sv = $('#cad-reg'), form = $('#f-sup');
+  if (!sv || !form) return;
+  if (v != null) {
+    $('#s-setor').value = v; const b = $('#s-setor-rot'); b.textContent = rotuloEsc('codsupervisor', v); b.classList.toggle('vazio', !v); $('#s-erro').hidden = true;
+    const n = $('#s-nesta'), t = nestaRegiao(+v || null); n.innerHTML = t; n.hidden = !t;
+  }
+  sv.hidden = true; form.hidden = false; f.querySelector(':scope > .folha-cab').hidden = false; f.scrollTop = 0;
+  if (!REDUZ) form.animate([{ opacity: 0, transform: 'translateX(-24px)' }, { opacity: 1, transform: 'none' }], { duration: 260, easing: EASE });
+}
 function vContas() {
   const AD = S.adm, cs = AD.dados.contas || [], setores = AD.dados.setores || [], cv = convitesAguardando(AD.dados);
   const n = s => cs.filter(c => c.situacao === s).length;
@@ -1176,8 +1256,8 @@ function vContas() {
     <div class="card conta-card" data-convite="${esc(v.email)}">
       <div class="topo"><div><b>${esc(v.nome || '(sem nome)')}</b><span>${esc(v.email)}</span></div><span class="pill warn">pendente</span></div>
       <div class="filters">
-        <div class="fld"><label>Perfil</label><select data-campo="tipo"><option value="supervisor"${v.tipo === 'gerente' ? '' : ' selected'}>Supervisor (só a região)</option><option value="gerente"${v.tipo === 'gerente' ? ' selected' : ''}>Gestor (todas ou alguns estados)</option></select></div>
-        <div class="fld" data-so="supervisor"${v.tipo === 'gerente' ? ' hidden' : ''}><label>Região</label><select data-campo="codsupervisor"><option value="">Escolha a região</option>${setores.map(([cod, nome]) => `<option value="${cod}"${v.codsupervisor === cod ? ' selected' : ''}>${esc(nome)}</option>`).join('')}</select></div>
+        <div class="fld"><label>Perfil</label>${campoEsc('tipo', v.tipo === 'gerente' ? 'gerente' : 'supervisor')}</div>
+        <div class="fld" data-so="supervisor"${v.tipo === 'gerente' ? ' hidden' : ''}><label>Região</label>${campoEsc('codsupervisor', v.codsupervisor)}</div>
       </div>
       <div class="fld" data-so="gerente"${v.tipo === 'gerente' ? '' : ' hidden'}><label>O que o gestor vê</label>${seletorEstados(v.estados, setores)}</div>
       <div class="sub">convite enviado em ${diaHm(v.criado_em)} · falta o Primeiro acesso com o código${v.tipo !== 'gerente' && v.codsupervisor && !setores.some(s => s[0] === v.codsupervisor) ? ' · ' + esc(regiao(v.codsupervisor)) + ' sem RCA ativo' : ''}</div>
@@ -1190,9 +1270,9 @@ function vContas() {
     <div class="card conta-card" data-conta="${c.id}">
       <div class="topo"><div><b>${esc(c.nome || '(sem nome)')}</b><span>${esc(c.email)}</span></div><span class="pill ${sit[c.situacao] || ''}">${esc(c.situacao)}</span></div>
       <div class="filters">
-        <div class="fld"><label>Perfil</label><select data-campo="tipo">${c.tipo === 'rca' ? '<option value="rca" selected>RCA</option>' : ''}<option value="supervisor"${c.tipo === 'supervisor' ? ' selected' : ''}>Supervisor (só a região)</option><option value="gerente"${c.tipo === 'gerente' ? ' selected' : ''}>Gestor (todas ou alguns estados)</option></select></div>
+        <div class="fld"><label>Perfil</label>${campoEsc('tipo', c.tipo)}</div>
         <div class="fld" data-so="rca"${c.tipo === 'rca' ? '' : ' hidden'}><label>Código do RCA</label><input data-campo="codusur" inputmode="numeric" value="${c.codusur || ''}"></div>
-        <div class="fld" data-so="supervisor"${c.tipo === 'supervisor' ? '' : ' hidden'}><label>Região</label><select data-campo="codsupervisor"><option value="">Escolha a região</option>${setores.map(([cod, nome]) => `<option value="${cod}"${c.codsupervisor === cod ? ' selected' : ''}>${esc(nome)}</option>`).join('')}</select></div>
+        <div class="fld" data-so="supervisor"${c.tipo === 'supervisor' ? '' : ' hidden'}><label>Região</label>${campoEsc('codsupervisor', c.codsupervisor)}</div>
       </div>
       <div class="fld" data-so="gerente"${c.tipo === 'gerente' ? '' : ' hidden'}><label>O que o gestor vê</label>${seletorEstados(c.estados, setores)}</div>
       ${c.tipo === 'rca' && c.codusur ? `<div class="sub">${c.rca_nome ? `WinThor: <b>${esc(titulo(c.rca_nome))}</b>${c.rca_ativo === false ? ' (inativo)' : ''} · ${c.email_confere ? '<span class="pill good">e-mail confere</span>' : '<span class="pill warn">e-mail diferente do WinThor</span>'}` : '<span class="pill bad">código não encontrado no WinThor</span>'}</div>` : ''}
@@ -1228,10 +1308,8 @@ async function carregarAcessos(silencioso) {
 function redesenharAcessos() {
   if (S.chave !== 'adm') return;
   const foco = document.activeElement;
-  // lista sem opção marcada no HTML abre na primeira ("Escolha a região"): isso não é edição
-  const inicial = s => Math.max(0, [...s.options].findIndex(o => o.defaultSelected));
-  const editado = [...document.querySelectorAll('.conta-card [data-campo]')].some(el => el.tagName === 'SELECT'
-    ? el.selectedIndex !== inicial(el) : el.value !== el.defaultValue);
+  // 1.14.2: perfil e região são campos escondidos (a folha de escolha grava neles); trocado = valor diferente do original
+  const editado = [...document.querySelectorAll('.conta-card [data-campo]')].some(el => el.value !== el.defaultValue);
   if ((foco && /^(INPUT|SELECT|TEXTAREA)$/.test(foco.tagName)) || !$('#folha').hidden || $('#view').classList.contains('em-anim') || editado) { S.adm.pendente = true; return; }
   S.adm.pendente = false;
   render({ rolar: window.scrollY });
@@ -1304,8 +1382,7 @@ function abrirCadastro(cod) {
   if (!AD) { toast('Carregando as regiões… tente de novo em instantes.'); return; }
   const gestor = cod === 'g';
   cod = gestor ? null : (cod ? +cod : null);
-  const ja = cod ? (AD.contas || []).filter(c => c.tipo === 'supervisor' && c.codsupervisor === cod && c.situacao === 'liberado') : [];
-  const conv = cod ? (AD.convites || []).filter(v => v.codsupervisor === cod && v.situacao === 'aguardando') : [];
+  const nesta = nestaRegiao(cod);
   abrirFolha(`
     <div class="alca" aria-hidden="true"></div>
     <div class="folha-cab"><button type="button" class="link" data-a="fechar-folha">Cancelar</button><b>Novo acesso</b><button type="submit" form="f-sup" class="link forte">Salvar</button></div>
@@ -1316,10 +1393,10 @@ function abrirCadastro(cod) {
       <div class="grupo">
         <label class="campo"><span>Nome</span><input id="s-nome" autocomplete="off" autocapitalize="words" placeholder="Nome completo"></label>
         <label class="campo"><span>E-mail</span><input id="s-email" type="email" inputmode="email" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="nome@lube.com.br"></label>
-        <label class="campo" id="s-setor-box"${gestor ? ' hidden' : ''}><span>Região</span><select id="s-setor"><option value="">Escolha a região</option>${(AD.setores || []).map(([c, nm]) => `<option value="${c}"${c === cod ? ' selected' : ''}>${esc(nm)}</option>`).join('')}</select></label>
+        <div class="campo" id="s-setor-box"${gestor ? ' hidden' : ''}><span>Região</span><button type="button" class="campo-bt" data-a="cad-reg"><b id="s-setor-rot"${cod ? '' : ' class="vazio"'}>${esc(rotuloEsc('codsupervisor', cod || ''))}</b>${ic('baixo', 'seta')}</button><input type="text" hidden id="s-setor" value="${cod || ''}"></div>
       </div>
       <div class="fld est-folha" id="s-est-box"${gestor ? '' : ' hidden'}><label>O que o gestor vê</label>${seletorEstados(null, AD.setores)}</div>
-      ${ja.length || conv.length ? `<div class="faixa info">Nesta região: ${[...ja.map(c => esc(c.nome || c.email) + ' (liberado)'), ...conv.map(v => esc(v.nome) + ' (pendente)')].join(', ')}.</div>` : ''}
+      <div class="faixa info" id="s-nesta"${nesta ? '' : ' hidden'}>${nesta}</div>
       <div class="nota" id="s-nota">${notaPerfil(gestor)}</div>
       <div class="msg bad" id="s-erro" role="alert" hidden></div>
       <button class="btn cheio" type="submit" id="s-salvar">Salvar e gerar o convite</button>
@@ -2114,14 +2191,19 @@ function abrirSetores() {
    embaixo (piorou com o GERAL no topo, 1.12). Agora as regiões que a pessoa vê vêm agrupadas por estado (pelo nome da
    região, como o recorte da 1.11.6), em duas colunas, e cabem na tela; a aberta fica marcada em dourado. */
 function gradeRegioes(i0) {
-  const grupos = new Map(), atual = D && !ehGeral() ? D.setor.cod : null;
-  for (const s of R.setores) { const e = estadoDaRegiao(s.nome); if (!grupos.has(e)) grupos.set(e, []); grupos.get(e).push(s); }
+  const atual = D && !ehGeral() ? D.setor.cod : null;
+  return gradeDe(R.setores, atual, 'setor', s => s.cod === atual ? 'aberta agora' : brlK(+s.venda[i0] || 0));
+}
+/* lista: [{ cod, nome }]; sub(s): o texto pequeno embaixo do nome (1.14.2: a mesma grade nos Acessos) */
+function gradeDe(lista, atual, acao, sub) {
+  const grupos = new Map();
+  for (const s of lista) { const e = estadoDaRegiao(s.nome); if (!grupos.has(e)) grupos.set(e, []); grupos.get(e).push(s); }
   const curto = nome => { const m = /^\s*(ES|BA|RJ)\s*-\s*(.*)$/i.exec(String(nome || '')); return titulo(m ? m[2] : nome); };
   return UFS.concat('OUTRAS').filter(e => grupos.has(e)).map(e => {
-    const ss = grupos.get(e).slice().sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+    const ss = grupos.get(e).slice().sort((a, b) => String(a.nome).localeCompare(String(b.nome), 'pt-BR'));
     return `<div class="reg-grupo"><div class="reg-uf">${e === 'OUTRAS' ? 'Sem estado' : e}<small>${regioesN(ss.length)}</small></div>
-      <div class="reg-grade">${ss.map(s => `<button type="button" class="reg-op${s.cod === atual ? ' sel' : ''}" data-a="setor" data-v="${s.cod}"${s.cod === atual ? ' aria-current="true"' : ''}>
-        <b>${esc(curto(s.nome))}</b><small>${s.cod === atual ? 'aberta agora' : brlK(+s.venda[i0] || 0)}</small></button>`).join('')}</div></div>`;
+      <div class="reg-grade">${ss.map(s => `<button type="button" class="reg-op${s.cod === atual ? ' sel' : ''}" data-a="${acao}" data-v="${s.cod}"${s.cod === atual ? ' aria-current="true"' : ''}>
+        <b>${esc(curto(s.nome))}</b><small>${sub(s)}</small></button>`).join('')}</div></div>`;
   }).join('');
 }
 /* versão nova do app: ALERTA por cima de tudo (1.3; antes era só uma faixa no começo da tela, que sumia atrás do
@@ -2250,6 +2332,10 @@ function aplicarVivo(d) {
 }
 /* a tela se refaz sozinha, sem animação e no mesmo lugar; com alguém digitando ou com a folha aberta, espera */
 function redesenharAoVivo() {
+  // 1.14.2: a tela de Acessos não mostra venda e se refaz sozinha pela leitura dela (redesenharAcessos, que espera o
+  // Salvar). Com a lista do celular, o foco no campo segurava o redesenho; com a folha de escolha, não há foco e a
+  // leitura ao vivo de 15 em 15 s apagava o perfil ou a região trocados e ainda não salvos.
+  if (S.chave === 'adm') { VIVO.pendente = true; return; }
   const foco = document.activeElement;
   if ((foco && /^(INPUT|SELECT|TEXTAREA)$/.test(foco.tagName)) || !$('#folha').hidden || $('#view').classList.contains('em-anim')) { VIVO.pendente = true; return; }
   VIVO.pendente = false;
@@ -2457,6 +2543,12 @@ document.addEventListener('click', e => {
     case 'adm-excluir-sim': excluirConta(v, b); return;
     case 'adm-convite': { const card = b.closest('[data-convite]'); if (!card) return; b.setAttribute('aria-busy', 'true'); salvarConvite(card, b); return; }
     case 'est': marcarEstado(b); return;
+    // 1.14.2: Perfil e Região dos cartões e do Novo acesso na folha de escolha
+    case 'adm-esc': abrirEscAdm(b); return;
+    case 'adm-esc-marca': marcarEscAdm(v); return;
+    case 'cad-reg': abrirRegCadastro(); return;
+    case 'cad-reg-marca': fecharRegCadastro(v); return;
+    case 'cad-reg-voltar': fecharRegCadastro(); return;
     case 'novo-sup': abrirCadastro(v || null); return;
     case 'fechar-folha': fecharFolha(); return;
     case 'copiar-convite': copiar(); return;
@@ -2473,10 +2565,7 @@ document.addEventListener('click', e => {
 
 document.addEventListener('change', e => {
   const t = e.target, v = t.value;
-  if (t.closest('[data-conta], [data-convite]')) {
-    if (t.dataset.campo === 'tipo') { const card = t.closest('[data-conta], [data-convite]'); card.querySelectorAll('[data-so]').forEach(el => { el.hidden = el.dataset.so !== v; }); }
-    return;
-  }
+  if (t.closest('[data-conta], [data-convite]')) return;   // 1.14.2: perfil e região mudam pela folha (marcarEscAdm)
   if (t.closest('#folha') || !D) return;
   const data = s => { const d = fromIso(s); return isNaN(d) ? null : Math.max(D.ini, Math.min(D.hoje, d)); };
   switch (t.id) {
