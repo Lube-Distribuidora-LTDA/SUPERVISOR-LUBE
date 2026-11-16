@@ -447,8 +447,7 @@ function vVendas() {
     const per = resumoNf(D.nf.filter(o => o.d >= V.de && o.d <= V.ate && f(o)));
     const pp = resumoPed(D.ped.filter(o => o.d >= V.de && o.d <= V.ate && f(o)));
     return `
-    ${chips('v-q', V.q, [['hoje', 'Hoje'], ['semana', 'Semana'], ['mes', 'Mês'], ['ant', 'Mês anterior'], ['3m', '3 meses'], ['', 'Escolher datas']], 'rola')}
-    ${V.q === '' ? `<div class="pilulas">${pilData('v-de', 'De', V.de)}${pilData('v-ate', 'Até', V.ate)}</div>` : ''}
+    ${topoPeriodoV()}
     <div class="h">Acumulado <small>${dmy(V.de)} a ${dmy(V.ate)}${rca ? ' · ' + esc(rcaNome(rca)) : ''}</small></div>
     <div class="kpis k2">${kpi('Faturado', brlK(per.vl), 'venda menos devolução', 'hero')}${kpi('Margem', pctM(per.mg), brlK(per.ms) + ' de massa de margem')}${kpi('Digitado', brlK(pp.vl), nf0.format(pp.ped) + ' pedidos')}${kpi('Positivação', nf0.format(pp.pos), 'clientes com pedido')}${kpi('Ticket médio', brlK(pp.tk), 'por pedido')}</div>
     ${seg('v-graf', V.graf, [['fat', 'Faturado por dia'], ['dig', 'Digitado por dia']])}
@@ -504,7 +503,152 @@ function vVendas() {
       </button>`);
     return `<div class="h">Por setor <small>${nomeMes(R.meses[i0])} · toque para abrir</small></div><div class="list" data-lista="v-setores">${limitar(rows, 6, 'v-setores', 'Venda por setor')}</div>`;
   };
-  return { pags: [['hoje', 'Dia', dia], ['periodo', 'Período', periodoPag], !ehRca() && ['rcas', 'RCAs', rcasPag], ehGerente() && R && ['setores', 'Setores', setoresPag]] };
+  // 1.14: Fornecedor (o mesmo período da página Período; a escolha de fornecedores fica guardada no aparelho)
+  const fornPag = () => pagFornecedor(V.de, V.ate, rca || null, `${dmy(V.de)} a ${dmy(V.ate)}${rca ? ' · ' + esc(rcaNome(rca)) : ''}`, topoPeriodoV());
+  return { pags: [['hoje', 'Dia', dia], ['periodo', 'Período', periodoPag], ['forn', 'Fornecedor', fornPag], !ehRca() && ['rcas', 'RCAs', rcasPag], ehGerente() && R && ['setores', 'Setores', setoresPag]] };
+}
+
+/* o período de Vendas (Período e Fornecedor): os botões e, em Escolher datas, De e Até */
+const topoPeriodoV = () => { const V = S.v; return `${chips('v-q', V.q, [['hoje', 'Hoje'], ['semana', 'Semana'], ['mes', 'Mês'], ['ant', 'Mês anterior'], ['3m', '3 meses'], ['', 'Escolher datas']], 'rola')}
+    ${V.q === '' ? `<div class="pilulas">${pilData('v-de', 'De', V.de)}${pilData('v-ate', 'Até', V.ate)}</div>` : ''}`; };
+/* ---------------- fornecedor e mix (1.14) ----------------
+   Júlio (2026-11-16): em Vendas, "uma aba de fornecedor, onde eu escolho os fornecedores que eu quero visualizar as
+   vendas"; em Carteira, entre Compram e Não compram, "um MIX/SKU onde aparece o número de SKU vendido naquele período da
+   carteira, podendo filtrar também por fornecedor dentro da aba mix (o número mix precisa sair do mesmo lugar que a
+   Análise Comercial)". Os dois leem a /api/itens (supervisor.itens_periodo, db/18): a base e a regra da ANÁLISE COMERCIAL
+   (venda faturada sem ST por item, menos a devolução; mix = SKUs diferentes com venda; positivação = clientes com venda),
+   no período da tela. A escolha de fornecedores fica guardada no aparelho: uma para Vendas, outra para o Mix. */
+const IT = { m: new Map(), carregando: new Set() }, IT_VALIDADE = 3 * 60e3;
+const FL = { v: [], c: [] };   // a lista de fornecedores do período aberto (para a folha de escolha)
+const lerForns = k => { try { const a = JSON.parse(localStorage.getItem('sup-lube-forn-' + k) || '[]'); return Array.isArray(a) ? a.filter(Number.isInteger) : []; } catch (e) { return []; } };
+S.v.forns = lerForns('v'); S.c.forns = lerForns('c'); S.v.fab = null; S.c.fab = null;
+function guardarForns(k) { try { localStorage.setItem('sup-lube-forn-' + k, JSON.stringify(S[k].forns)); } catch (e) { /* ignora */ } }
+const escopoItens = () => ehGeral() ? 'GERAL' : ehRca() ? '' : S.escopo;
+const chaveItens = p => [p.escopo, p.de, p.ate, p.rca || 0, (p.forns || []).slice().sort((a, b) => a - b).join('.'), p.prod == null ? '' : p.prod].join('|');
+/* o que já chegou (ou null); pede ao servidor quando falta ou passou da validade e, ao chegar, a tela se refaz sozinha */
+function itens(p) {
+  const k = chaveItens(p), x = IT.m.get(k);
+  if ((!x || Date.now() - x.em > IT_VALIDADE) && !IT.carregando.has(k)) buscarItens(p, k);
+  return x || null;
+}
+async function buscarItens(p, k) {
+  IT.carregando.add(k);
+  let x;
+  try {
+    const t = await A.token();
+    const qs = new URLSearchParams({ de: p.de, ate: p.ate });
+    if (p.escopo) qs.set('escopo', p.escopo);
+    if (p.rca) qs.set('rca', p.rca);
+    if (p.forns && p.forns.length) qs.set('forns', p.forns.join(','));
+    if (p.prod != null) qs.set('prod', p.prod);
+    const r = await fetch((CFG.api || '') + '/api/itens?' + qs, { headers: { Authorization: 'Bearer ' + t }, cache: 'no-store' });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.mensagem || 'Não consegui ler a venda por fornecedor (' + r.status + ').');
+    x = { dados: j, em: Date.now() };
+  } catch (e) { x = { erro: e.message || String(e), em: Date.now() }; }
+  IT.m.set(k, x); IT.carregando.delete(k);
+  if (IT.m.size > 60) IT.m.delete(IT.m.keys().next().value);
+  memo.base = '';   // as telas guardadas de Vendas e Carteira já não valem
+  if ((S.tab === 'vendas' || S.tab === 'carteira') && !S.pilha.length) redesenharAoVivo();
+}
+const carregandoItens = t => `<div class="faixa info">${t}</div><div class="esq" style="height:120px"></div><div class="esq" style="height:220px"></div>`;
+const erroItens = (x, p) => `<div class="msg bad">${esc(x.erro)}</div><button class="btn sec" type="button" data-a="it-de-novo" data-v="${esc(chaveItens(p))}">Tentar de novo</button>`;
+const contaSel = n => n ? `${n} ${n === 1 ? 'fornecedor escolhido' : 'fornecedores escolhidos'}` : 'Nenhum escolhido: vale para todos';
+/* a pílula que abre a escolha de fornecedores */
+function botaoForn(alvo, lista) {
+  const sel = S[alvo].forns, nomes = new Map((lista || []).map(f => [f[0], f[1]]));
+  const rot = !sel.length ? 'Todos' : sel.length === 1 ? titulo(nomes.get(sel[0]) || 'Fornecedor ' + sel[0]) : sel.length + ' escolhidos';
+  return `<div class="pilulas"><button type="button" class="pil forn-pil${sel.length ? ' on' : ''}" data-a="forn-escolher" data-v="${alvo}"><span>Fornecedor</span><b>${esc(rot)}</b>${ic('baixo', 'seta')}</button>
+    ${sel.length ? `<button type="button" class="pil forn-limpa" data-a="forn-todos" data-v="${alvo}">Ver todos</button>` : ''}</div>`;
+}
+function abrirEscolhaForn(alvo) {
+  const lista = FL[alvo] || [], sel = new Set(S[alvo].forns);
+  // os escolhidos primeiro, depois do que mais vendeu para o que menos
+  const ord = lista.slice().sort((a, b) => (sel.has(b[0]) - sel.has(a[0])) || ((b[2] - b[3]) - (a[2] - a[3])));
+  abrirFolha(`
+    <div class="alca" aria-hidden="true"></div>
+    <div class="folha-cab"><button type="button" class="link" data-a="forn-limpar" data-v="${alvo}">Limpar</button><b>Fornecedores</b><button type="button" class="link forte" data-a="forn-pronto" data-v="${alvo}">Pronto</button></div>
+    <form class="busca-ios" role="search" onsubmit="return false">${ic('busca')}<input id="forn-busca" type="search" autocomplete="off" enterkeyhint="search" placeholder="Nome ou código do fornecedor" aria-label="Buscar fornecedor"></form>
+    <div class="sub forn-cont" id="forn-cont">${contaSel(sel.size)}</div>
+    <div class="list forn-lista">${ord.length ? ord.map(f => `
+      <button type="button" class="row forn-op" data-a="forn-marca" data-v="${f[0]}" data-alvo="${alvo}" aria-pressed="${sel.has(f[0])}" data-busca="${esc(semAcento(f[0] + ' ' + f[1]))}">
+        <span class="t"><i class="marca" aria-hidden="true"></i><span class="nm">${esc(titulo(f[1]))} <span class="code">${f[0]}</span></span></span><span class="r">${brlK(f[2] - f[3])}</span>
+      </button>`).join('') : vazio('Nenhum fornecedor com venda no período.')}</div>`, 'Fornecedores');
+}
+function marcarForn(b) {
+  const alvo = b.dataset.alvo, cod = +b.dataset.v, l = S[alvo].forns, i = l.indexOf(cod);
+  if (i >= 0) l.splice(i, 1); else l.push(cod);
+  b.setAttribute('aria-pressed', String(i < 0));
+  const c = $('#forn-cont'); if (c) c.textContent = contaSel(l.length);
+  S.fornMudou = alvo;
+}
+function aplicarForns(alvo) { S.fornMudou = null; S[alvo].fab = null; guardarForns(alvo); render({ rolar: window.scrollY }); }
+/* os produtos (SKUs) do fornecedor aberto, por baixo da linha dele */
+function produtosForn(p, cod) {
+  const x = itens(Object.assign({}, p, { forns: null, prod: cod }));
+  if (!x) return `<div class="row" data-filho><span class="t muted">Buscando os produtos…</span></div>`;
+  if (x.erro) return `<div class="row" data-filho><span class="t muted">${esc(x.erro)}</span></div>`;
+  const ps = x.dados.prod || [];
+  return ps.length ? ps.slice(0, 40).map(r => `
+      <div class="row" data-filho><span class="t">${esc(titulo(r[1]))} <span class="code">${r[0]}</span></span><span class="r">${brl(r[2])}</span>
+        <span class="sub full">${nf0.format(r[3])} un · ${nf0.format(r[4])} ${r[4] === 1 ? 'cliente' : 'clientes'}</span></div>`).join('') +
+      (ps.length > 40 ? `<div class="row" data-filho><span class="t muted">e mais ${ps.length - 40} produtos</span></div>` : '')
+    : `<div class="row" data-filho><span class="t muted">Sem produto vendido no período.</span></div>`;
+}
+/* Vendas › Fornecedor (região e GERAL): o período é o mesmo da página Período */
+function pagFornecedor(d1, d2, rca, rotulo, topo) {
+  const p = { escopo: escopoItens(), de: d1, ate: d2, rca }, sel = S.v.forns;
+  const base = itens(p), tot = sel.length ? itens(Object.assign({}, p, { forns: sel })) : base;
+  if (base && base.dados) FL.v = base.dados.forn || [];
+  const pil = botaoForn('v', FL.v);
+  if (!base || !tot) return topo + pil + carregandoItens('Buscando a venda por fornecedor…');
+  if (base.erro) return topo + pil + erroItens(base, p);
+  if (tot.erro) return topo + pil + erroItens(tot, Object.assign({}, p, { forns: sel }));
+  const T = tot.dados.tot, vend = T.venda - T.dev, mg = T.venda ? (T.venda - T.custo) / T.venda : 0;
+  const lista = base.dados.forn.filter(f => !sel.length || sel.includes(f[0]));
+  const mx = Math.max(1, ...lista.map(f => f[2] - f[3]));
+  const rows = lista.map(f => {
+    const v = f[2] - f[3], ab = S.v.fab === f[0];
+    return `
+      <button type="button" class="row" data-a="forn-abrir" data-v="${f[0]}" data-alvo="v" aria-expanded="${ab}">
+        <span class="t">${esc(titulo(f[1]))} <span class="code">${f[0]}</span></span><span class="r">${brl(v)}</span>
+        <span class="sub">${nf0.format(f[5])} ${f[5] === 1 ? 'cliente' : 'clientes'} · ${nf0.format(f[6])} SKUs</span><span class="sub r">${vend ? pct(v / vend) + ' do total' : ''}</span>
+        <span class="full">${bar(v / mx, 'gold')}</span>
+      </button>${ab ? produtosForn(p, f[0]) : ''}`;
+  });
+  return topo + pil + `
+    <div class="h">${sel.length ? 'Fornecedores escolhidos' : 'Todos os fornecedores'} <small>${rotulo}</small></div>
+    <div class="kpis k2">${kpi('Vendido', brlK(vend), 'venda menos devolução', 'hero')}${kpi('Positivação', nf0.format(T.posit), 'clientes com compra')}${kpi('Mix', nf0.format(T.mix), 'SKUs diferentes')}${kpi('Margem', pctM(mg), brlK(T.dev) + ' devolvidos')}</div>
+    <div class="h">Por fornecedor <small>toque para ver os produtos</small></div>
+    <div class="list" data-lista="v-forn">${rows.length ? limitar(rows, sel.length ? 50 : 8, 'v-forn', 'Venda por fornecedor') : vazio('Nenhuma venda no período.')}</div>
+    <div class="nota">Mesma base e mesma conta da Análise Comercial: venda faturada sem ST, item por item, menos a devolução. Por isso o total pode ser um pouco diferente do Faturado das outras páginas, que é o total líquido do Central Comercial.</div>`;
+}
+/* Carteira › Mix/SKU (região e GERAL): o período e o RCA são os da Carteira */
+function pagMix(d1, d2, rca, rotulo, notaExtra) {
+  const p = { escopo: escopoItens(), de: d1, ate: d2, rca }, sel = S.c.forns;
+  const base = itens(p), tot = sel.length ? itens(Object.assign({}, p, { forns: sel })) : base;
+  if (base && base.dados) FL.c = base.dados.forn || [];
+  const pil = botaoForn('c', FL.c);
+  if (!base || !tot) return pil + carregandoItens('Contando os SKUs vendidos…');
+  if (base.erro) return pil + erroItens(base, p);
+  if (tot.erro) return pil + erroItens(tot, Object.assign({}, p, { forns: sel }));
+  const T = tot.dados.tot;
+  const lista = base.dados.forn.filter(f => f[6] > 0 && (!sel.length || sel.includes(f[0]))).sort((a, b) => b[6] - a[6] || (b[2] - a[2]));
+  const mx = Math.max(1, ...lista.map(f => f[6]));
+  const rows = lista.map(f => {
+    const ab = S.c.fab === f[0];
+    return `
+      <button type="button" class="row" data-a="forn-abrir" data-v="${f[0]}" data-alvo="c" aria-expanded="${ab}">
+        <span class="t">${esc(titulo(f[1]))} <span class="code">${f[0]}</span></span><span class="r">${nf0.format(f[6])} ${f[6] === 1 ? 'SKU' : 'SKUs'}</span>
+        <span class="sub full">${brl(f[2] - f[3])} vendidos · ${nf0.format(f[5])} ${f[5] === 1 ? 'cliente' : 'clientes'}</span>
+        <span class="full">${bar(f[6] / mx, 'gold')}</span>
+      </button>${ab ? produtosForn(p, f[0]) : ''}`;
+  });
+  return pil + `
+    <div class="kpis k2">${kpi('Mix', nf0.format(T.mix), `SKUs diferentes vendidos ${rotulo}`, 'hero')}${kpi('Fornecedores', nf0.format(lista.length), 'com SKU vendido')}${kpi('Clientes', nf0.format(T.posit), 'que compraram')}</div>
+    <div class="h">Por fornecedor <small>SKUs vendidos · toque para ver quais</small></div>
+    <div class="list" data-lista="c-mix">${rows.length ? limitar(rows, sel.length ? 50 : 8, 'c-mix', 'Mix por fornecedor') : vazio('Nenhum SKU vendido no período.')}</div>
+    <div class="nota">Mix = SKUs (produtos) diferentes com venda no período, a mesma conta da Análise Comercial. No total, o SKU vendido por dois RCAs conta uma vez só.${notaExtra || ''}</div>`;
 }
 
 /* ---------------- aba: carteira ---------------- */
@@ -584,7 +728,13 @@ function vCarteira() {
   const naoPag = () => `<div class="h">Sem pedido <small>${rotulo} · ${temPot ? 'maior potencial primeiro' : 'pedido mais recente primeiro'}</small></div>
     <div class="list" data-lista="c-nao">${nao.length ? limitar(nao.slice(0, 300).map(linhaNao), 5, 'c-nao', 'Sem pedido ' + rotulo, mais300(nao.length, 'clientes'), nao.length) : vazio('Todos os clientes da carteira tiveram pedido. 👏')}</div>
     ${!temPot ? '<span class="nota">O potencial (média dos 3 meses anteriores) não aparece no mês mais antigo: o app guarda só os últimos 4 meses.</span>' : ''}`;
-  return { topo, pags: [['pos', 'Positivação', posPag], ['comp', `Compram<span class="n">${nf0.format(comp.length)}</span>`, compPag], ['nao', `Não compram<span class="n">${nf0.format(nao.length)}</span>`, naoPag]] };
+  // 1.14: Mix/SKU entre Compram e Não compram (o período e o RCA da Carteira; o número sai da base da Análise Comercial)
+  const pMix = { escopo: escopoItens(), de: d1, ate: d2, rca: rca || null };
+  const xMix = S.c.forns.length ? itens(Object.assign({}, pMix, { forns: S.c.forns })) : itens(pMix);
+  const nMix = xMix && xMix.dados ? xMix.dados.tot.mix : null;
+  const mixPag = () => pagMix(d1, d2, rca || null, rotulo, C.cid ? ' Cidade e bairro não entram no mix: ele vale para ' + (rca ? 'o RCA escolhido' : 'a região inteira') + '.' : '');
+  return { topo, pags: [['pos', 'Positivação', posPag], ['comp', `Compram<span class="n">${nf0.format(comp.length)}</span>`, compPag],
+    ['mix', `Mix/SKU${nMix != null ? `<span class="n">${nf0.format(nMix)}</span>` : ''}`, mixPag], ['nao', `Não compram<span class="n">${nf0.format(nao.length)}</span>`, naoPag]] };
 }
 
 /* ---------------- tela: cliente (abre por cima, como no iPhone) ---------------- */
@@ -1369,7 +1519,9 @@ function gVendas() {
     <div class="card">${barrasGeral(T, true) || '<span class="muted">O gráfico aparece a partir do segundo dia do mês.</span>'}</div>
     ${notaGeral()}`;
   const regioes = () => `<div class="h">Por região <small>faturado em ${nomeM} · toque para abrir</small></div>${listaRegioesFat('g-reg', 30)}`;
-  return { pags: [['hoje', 'Dia', dia], ['mes', 'Mês', mes], ['regioes', 'Regiões', regioes]] };
+  // 1.14: Fornecedor no GERAL (as regiões do gestor juntas), com o período de Vendas
+  const forn = () => { const V = S.v; if (V.de == null || V.ate > H) { const p = periodo(V.q || 'mes'); V.de = p[0]; V.ate = p[1]; } return pagFornecedor(V.de, V.ate, null, `${dmy(V.de)} a ${dmy(V.ate)} · ${regioesN(T.n)}`, topoPeriodoV()); };
+  return { pags: [['hoje', 'Dia', dia], ['mes', 'Mês', mes], ['forn', 'Fornecedor', forn], ['regioes', 'Regiões', regioes]] };
 }
 function gCarteira() {
   const T = D.G, nomeM = MESES_L[dt(D.hoje).getUTCMonth()];
@@ -1420,7 +1572,12 @@ function gCarteira() {
       <div class="list" data-lista="g-nao-reg">${regs.length ? limitar(regs.map(linhaReg), 30, 'g-nao-reg', 'Não compram por região') : vazio('Nenhuma região com carteira.')}</div>`}
     <div class="nota">Como na Carteira de cada região, no mês: carteira = clientes com um RCA da região como RCA 1 ou 2; não compra = sem pedido no mês. No total, cliente de duas regiões conta uma vez só; em Por região, cada região conta os dela. Toque no cliente para abrir a ficha dele na região.</div>`;
   };
-  return { pags: [['pos', 'Positivação', posPag], ['nao', `Não compram${N ? `<span class="n">${nf0.format(N.nao)}</span>` : ''}`, naoPag]] };
+  // 1.14: Mix/SKU no mês, das regiões do gestor juntas (SKU de duas regiões conta uma vez)
+  const pMix = { escopo: 'GERAL', de: T.m0, ate: D.hoje, rca: null };
+  const xMix = S.c.forns.length ? itens(Object.assign({}, pMix, { forns: S.c.forns })) : itens(pMix);
+  const mixPag = () => pagMix(T.m0, D.hoje, null, 'em ' + nomeM + ' até hoje');
+  return { pags: [['pos', 'Positivação', posPag], ['mix', `Mix/SKU${xMix && xMix.dados ? `<span class="n">${nf0.format(xMix.dados.tot.mix)}</span>` : ''}`, mixPag],
+    ['nao', `Não compram${N ? `<span class="n">${nf0.format(N.nao)}</span>` : ''}`, naoPag]] };
 }
 /* 1.13: a lista do Não compram do GERAL (/api/geral). Fica guardada uns minutos; ao chegar, a tela se refaz sozinha */
 const GN = { dados: null, carregando: false, erro: '', em: 0 }, GN_VALIDADE = 3 * 60e3;
@@ -1528,7 +1685,7 @@ function embrulhar(chave, r) {
   let atual = S.pag[chave];
   if (!ps.some(p => p[0] === atual)) atual = S.pag[chave] = ps[0][0];
   const i = ps.findIndex(p => p[0] === atual);
-  const seg2 = ps.length > 1 ? `<div class="segios" role="tablist" style="--n:${ps.length};--i:${i}"><i class="thumb" aria-hidden="true"></i>${ps.map(([id, rot]) => `<button type="button" role="tab" data-a="pag" data-v="${id}" aria-selected="${id === atual}">${rot}</button>`).join('')}</div>` : '';
+  const seg2 = ps.length > 1 ? `<div class="segios${ps.length >= 4 ? ' denso' : ''}" role="tablist" style="--n:${ps.length};--i:${i}"><i class="thumb" aria-hidden="true"></i>${ps.map(([id, rot]) => `<button type="button" role="tab" data-a="pag" data-v="${id}" aria-selected="${id === atual}">${rot}</button>`).join('')}</div>` : '';
   return (r.topo || '') + seg2 + `<div class="pagina" data-pag="${atual}">${ps[i][2]()}</div>`;
 }
 /* tela já calculada fica guardada (1.4, Júlio: "está travando bastante entre uma aba e outra"): voltar a uma aba
@@ -2172,6 +2329,7 @@ function abrirGeral() {
 }
 function limparFiltros() {
   S.v.rca = 0; S.c.rca = 0; S.c.cid = ''; S.c.bai = ''; S.a.rca = 0; S.i.open = 0; S.d.open = 0; S.k.raw = '';
+  S.v.fab = null; S.c.fab = null;
   S.pilha = []; S.rolagens = [];
 }
 function trocarSetor(cod) {
@@ -2185,7 +2343,7 @@ function trocarSetor(cod) {
 
 /* ---------------- eventos ---------------- */
 document.addEventListener('click', e => {
-  if (e.target.closest('#veu')) { fecharFolha(); return; }
+  if (e.target.closest('#veu')) { fecharFolha(); if (S.fornMudou) aplicarForns(S.fornMudou); return; }
   if (e.target.closest('#conta-btn')) { abrirMenu(); return; }
   if (e.target.closest('#btn-busca')) { if (D && !ehGeral()) empurrar({ t: 'busca', titulo: 'Clientes' }); return; }
   if (e.target.closest('#when')) { if (!baixando) atualizarAgora(); return; }
@@ -2210,6 +2368,19 @@ document.addEventListener('click', e => {
     case 'g-nao-reg': S.tab = 'carteira'; S.pag.carteira = 'nao'; S.c.q = 'mes'; S.c.ref = null; trocarSetor(+v); return;
     case 'g-cli': abrirClienteNaRegiao(+b.dataset.r, +v); return;
     case 'v-rca': S.v.rca = +v; S.pag.vendas = 'hoje'; if (!naRaiz()) render({ anim: 'pag-' }); return;
+    // 1.14: escolha de fornecedores (Vendas › Fornecedor e Carteira › Mix/SKU) e os produtos do fornecedor
+    case 'forn-escolher': abrirEscolhaForn(v); return;
+    case 'forn-marca': marcarForn(b); return;
+    case 'forn-limpar': {
+      S[v].forns = []; S.fornMudou = v;
+      document.querySelectorAll('#folha .forn-op').forEach(x => x.setAttribute('aria-pressed', 'false'));
+      const c = $('#forn-cont'); if (c) c.textContent = contaSel(0);
+      return;
+    }
+    case 'forn-pronto': fecharFolha(); aplicarForns(v); return;
+    case 'forn-todos': S[v].forns = []; aplicarForns(v); return;
+    case 'forn-abrir': { const al = b.dataset.alvo; S[al].fab = S[al].fab === +v ? null : +v; break; }
+    case 'it-de-novo': IT.m.delete(v); break;
     case 'v-q': if (v) { S.v.q = v; const [d1, d2] = periodo(v); S.v.de = d1; S.v.ate = d2; } else S.v.q = ''; break;
     case 'v-graf': S.v.graf = v; break;
     case 'v-qr': S.v.qr = v; break;
@@ -2282,6 +2453,11 @@ document.addEventListener('submit', e => {
   if (so && so === raw && !D.CMAP.has(+so)) toast('O cliente ' + so + ' não faz parte da sua base.', true);
 });
 document.addEventListener('input', e => {
+  if (e.target.id === 'forn-busca') {   // 1.14: a busca na escolha de fornecedores só esconde as linhas (o teclado não fecha)
+    const q = semAcento(e.target.value).trim();
+    document.querySelectorAll('#folha .forn-op').forEach(x => { x.hidden = !!q && !x.dataset.busca.includes(q); });
+    return;
+  }
   if (e.target.id !== 'codcli') return;
   S.k.raw = e.target.value;
   clearTimeout(document._busca);

@@ -587,3 +587,21 @@ mark { background: var(--gold-soft); color: var(--gold-strong); border-radius: 3
 /* 1.13: Resumo do GERAL por estado (o toque abre as regiões do estado) */
 .row.est-row .est-ver { color: var(--accent); font-weight: 700; font-size: 11.5px; }
 .row.est-row[aria-expanded="true"] { background: var(--gold-soft); box-shadow: inset 3px 0 0 var(--gold); }
+
+/* 1.14: barra de páginas com 4 ou mais (Vendas do gestor, Carteira): o número vai embaixo do nome, para caber no celular */
+.segios.denso button { padding: 6px 2px; font-size: 12.5px; line-height: 1.15; }
+.segios.denso .n { display: block; margin: 1px 0 0; font-size: 10px; }
+/* a escolha de fornecedores (Vendas › Fornecedor e Carteira › Mix/SKU) */
+.pil.forn-pil, .pil.forn-limpa { cursor: pointer; gap: 6px; padding-right: 12px; font: 600 13.5px var(--f-body); color: var(--ink); }
+.pil.forn-pil b { font-weight: 700; max-width: 52vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pil.forn-pil .seta { width: 14px; height: 14px; opacity: .8; flex: none; }
+.pil.forn-pil.on { border-color: var(--gold-line); background: var(--gold-soft); color: var(--gold-strong); }
+.pil.forn-limpa { cursor: pointer; color: var(--accent); font-weight: 700; }
+.forn-cont { margin: 2px 2px 8px; }
+.forn-op .t { display: flex; align-items: center; gap: 9px; }
+.forn-op .marca { flex: none; width: 19px; height: 19px; border-radius: 6px; border: 1.6px solid var(--muted); transition: background-color .15s, border-color .15s; }
+.forn-op[aria-pressed="true"] .marca { border-color: var(--gold); background: var(--gold); box-shadow: inset 0 0 0 3px var(--surface); }
+.forn-op[aria-pressed="true"] { background: var(--gold-soft); }
+.folha form.busca-ios { flex-direction: row; gap: 8px; margin: 4px 0 6px; }   /* a folha empilha formulários; a busca fica em linha */
+.forn-op .nm { min-width: 0; }
+.forn-op .code { white-space: nowrap; }
