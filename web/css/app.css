@@ -605,3 +605,26 @@ mark { background: var(--gold-soft); color: var(--gold-strong); border-radius: 3
 .folha form.busca-ios { flex-direction: row; gap: 8px; margin: 4px 0 6px; }   /* a folha empilha formulários; a busca fica em linha */
 .forn-op .nm { min-width: 0; }
 .forn-op .code { white-space: nowrap; }
+/* 1.14.1: a escolha de região agrupada por estado, em duas colunas (cabe na tela do celular) */
+.folha .row.geral-op { margin-bottom: 4px; }
+.reg-grupo { margin-top: 12px; }
+.reg-uf { display: flex; align-items: baseline; gap: 6px; font: 800 12px var(--f-body); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin: 0 2px 6px; }
+.reg-uf small { font: 600 11px var(--f-body); letter-spacing: 0; text-transform: none; }
+.reg-grade { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.reg-op { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 3px; min-width: 0; min-height: 54px; padding: 9px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); text-align: left; }
+.reg-op b { font: 700 13.5px/1.2 var(--f-body); overflow-wrap: anywhere; }
+.reg-op small { font: 600 11.5px var(--f-num); color: var(--muted); }
+.reg-op:active { background: var(--press); }
+.reg-op.sel { border-color: var(--gold); background: var(--gold-soft); box-shadow: 0 0 0 1px var(--gold) inset; }
+.reg-op.sel b, .reg-op.sel small { color: var(--gold-strong); }
+/* três colunas compactas: as 20 regiões cabem na tela de um celular comum sem rolar */
+.reg-grupo { margin-top: 10px; }
+.reg-uf { margin-bottom: 5px; }
+.reg-grade { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.reg-op { min-height: 48px; padding: 7px 9px; border-radius: 11px; gap: 2px; }
+.reg-op b { font-size: 12.5px; line-height: 1.15; }
+.reg-op small { font-size: 10.5px; }
+.folha .row.geral-op { padding: 11px 14px; }
+/* 1.14.1: as escolhas de uma opção só (RCA, cidade, bairro, período) usam a folha da escolha de fornecedor, com a marca redonda */
+.esc-op .marca { border-radius: 50%; }
+.forn-op[aria-pressed="true"] .nm { color: var(--gold-strong); font-weight: 700; }

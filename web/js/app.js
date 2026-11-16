@@ -235,9 +235,45 @@ const mesesDoPeriodo = chave => { const m0 = mesDe(D.hoje); return chave === 'an
 /* ---------------- peças de interface ---------------- */
 const seg = (act, atual, ops) => '<div class="seg" role="group">' + ops.map(([v, l]) => `<button type="button" data-a="${act}" data-v="${v}" aria-pressed="${String(v) === String(atual)}">${l}</button>`).join('') + '</div>';
 const chips = (act, atual, ops, cls) => `<div class="chips${cls ? ' ' + cls : ''}" role="group">` + ops.map(([v, l]) => `<button type="button" class="chip" data-a="${act}" data-v="${v}" aria-pressed="${v === atual}">${l}</button>`).join('') + '</div>';
-/* filtros em pílula: uma linha só, que desliza para o lado quando não cabe */
+/* filtros em pílula: uma linha só, que desliza para o lado quando não cabe.
+   1.14.1 (Júlio: "todas as abas que precisam selecionar podem ficar com o mesmo visual da seleção de fornecedor, manter
+   padrão para todos"): a pílula não abre mais a lista do celular; abre a mesma folha da escolha de fornecedor (busca
+   quando a lista é longa, a marca na escolhida) e o toque já aplica e fecha (uma escolha só). Vale para RCA, cidade,
+   bairro e o período da Curva ABC. ESC guarda as opções de cada pílula da tela aberta. */
+const ESC = {};
 function pilSel(id, rotulo, atual, ops) {
-  return `<label class="pil" for="${id}"><span>${rotulo}</span><select id="${id}">${ops.map(([v, l]) => `<option value="${esc(v)}"${String(v) === String(atual) ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select></label>`;
+  ESC[id] = { rotulo, atual: String(atual), ops };
+  const op = ops.find(o => String(o[0]) === String(atual)) || ops[0];
+  const padrao = !ops.length || String(ops[0][0]) === String(atual);
+  return `<button type="button" class="pil forn-pil${padrao ? '' : ' on'}" data-a="esc-abrir" data-v="${id}"><span>${esc(rotulo)}</span><b>${esc(op ? op[1] : '')}</b>${ic('baixo', 'seta')}</button>`;
+}
+function abrirEscolha(id) {
+  const e = ESC[id]; if (!e) return;
+  const longa = e.ops.length > 8;
+  abrirFolha(`
+    <div class="alca" aria-hidden="true"></div>
+    <div class="folha-cab"><button type="button" class="link" data-a="fechar-folha">Cancelar</button><b>${esc(e.rotulo)}</b><span></span></div>
+    ${longa ? `<form class="busca-ios" role="search" onsubmit="return false">${ic('busca')}<input id="esc-busca" type="search" autocomplete="off" enterkeyhint="search" placeholder="Buscar ${esc(e.rotulo === e.rotulo.toUpperCase() ? e.rotulo : e.rotulo.toLowerCase())}" aria-label="Buscar"></form>` : ''}
+    <div class="list forn-lista">${e.ops.map(([v, l]) => `
+      <button type="button" class="row forn-op esc-op" data-a="esc-marca" data-v="${esc(String(v))}" data-id="${id}" aria-pressed="${String(v) === e.atual}" data-busca="${esc(semAcento(l))}">
+        <span class="t"><i class="marca" aria-hidden="true"></i><span class="nm">${esc(l)}</span></span>
+      </button>`).join('')}</div>`, e.rotulo);
+  // a escolhida fica à vista
+  const f = $('#folha'), sel = f.querySelector('.esc-op[aria-pressed="true"]');
+  if (sel) f.scrollTop = Math.max(0, sel.offsetTop - f.clientHeight / 2 + sel.offsetHeight / 2);
+}
+/* o que cada escolha muda (antes vinha do "change" da lista do celular) */
+function aplicarEscolha(id, v) {
+  switch (id) {
+    case 'v-rca': S.v.rca = +v; break;
+    case 'c-rca': S.c.rca = +v; S.c.cid = ''; S.c.bai = ''; break;
+    case 'c-cid': S.c.cid = v; S.c.bai = ''; break;
+    case 'c-bai': S.c.bai = v; break;
+    case 'a-rca': S.a.rca = +v; break;
+    case 'a-per': S.a.per = v; break;
+    default: return;
+  }
+  render({ rolar: window.scrollY });
 }
 const pilData = (id, rotulo, d) => `<label class="pil" for="${id}"><span>${rotulo}</span><input type="date" id="${id}" value="${iso(d)}" min="${iso(D.ini)}" max="${iso(D.hoje)}"></label>`;
 function pilRca(id, atual) {
@@ -2063,15 +2099,30 @@ function abrirSetores() {
   // 1.12: o GERAL no topo, em destaque dourado (Júlio), com a soma de todas as regiões que o gestor vê
   abrirFolha(`
     <div class="alca" aria-hidden="true"></div>
-    <div class="folha-tit">Escolha a região</div>
+    <div class="folha-cab"><button type="button" class="link" data-a="fechar-folha">Cancelar</button><b>Região</b><span></span></div>
     <button type="button" class="row geral-op${ehGeral() ? ' sel' : ''}" data-a="setor" data-v="GERAL">
       <span class="t">${ic('layers')}GERAL</span><span class="r">${ehGeral() ? ic('check', 'ok-ic') : brlK(fatTodas)}</span>
       <span class="sub full">${R.setores.length === 1 ? 'A região que você vê' : `A soma das ${R.setores.length} regiões que você vê`}, ao vivo</span>
     </button>
-    <div class="list">${R.setores.slice().sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')).map(s => `
-      <button type="button" class="row${D && s.cod === D.setor.cod ? ' sel' : ''}" data-a="setor" data-v="${s.cod}">
-        <span class="t">${esc(s.nome)}</span><span class="r">${D && s.cod === D.setor.cod ? ic('check', 'ok-ic') : brlK(s.venda[i0])}</span>
-      </button>`).join('')}</div>`, 'Escolha a região');
+    ${gradeRegioes(i0)}`, 'Escolha a região');
+  // 1.14.1: a região aberta fica sempre à vista na folha
+  const f = $('#folha'), sel = f.querySelector('.reg-op.sel');
+  if (sel) f.scrollTop = Math.max(0, sel.offsetTop - f.clientHeight / 2 + sel.offsetHeight / 2);
+}
+/* 1.14.1 (Júlio: "quando eu clico para escolher a região, ele não aparece as que eu liberei ... RJ não, preciso que
+   apareçam sempre"): a lista de 20 linhas passava da altura do celular e as do RJ e a Venda Interna ficavam escondidas
+   embaixo (piorou com o GERAL no topo, 1.12). Agora as regiões que a pessoa vê vêm agrupadas por estado (pelo nome da
+   região, como o recorte da 1.11.6), em duas colunas, e cabem na tela; a aberta fica marcada em dourado. */
+function gradeRegioes(i0) {
+  const grupos = new Map(), atual = D && !ehGeral() ? D.setor.cod : null;
+  for (const s of R.setores) { const e = estadoDaRegiao(s.nome); if (!grupos.has(e)) grupos.set(e, []); grupos.get(e).push(s); }
+  const curto = nome => { const m = /^\s*(ES|BA|RJ)\s*-\s*(.*)$/i.exec(String(nome || '')); return titulo(m ? m[2] : nome); };
+  return UFS.concat('OUTRAS').filter(e => grupos.has(e)).map(e => {
+    const ss = grupos.get(e).slice().sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+    return `<div class="reg-grupo"><div class="reg-uf">${e === 'OUTRAS' ? 'Sem estado' : e}<small>${regioesN(ss.length)}</small></div>
+      <div class="reg-grade">${ss.map(s => `<button type="button" class="reg-op${s.cod === atual ? ' sel' : ''}" data-a="setor" data-v="${s.cod}"${s.cod === atual ? ' aria-current="true"' : ''}>
+        <b>${esc(curto(s.nome))}</b><small>${s.cod === atual ? 'aberta agora' : brlK(+s.venda[i0] || 0)}</small></button>`).join('')}</div></div>`;
+  }).join('');
 }
 /* versão nova do app: ALERTA por cima de tudo (1.3; antes era só uma faixa no começo da tela, que sumia atrás do
    cabeçalho ao rolar — Júlio, 2026-10-22). Aparece uma vez por abertura do app; "Depois" fecha, e o ponto vermelho na
@@ -2370,6 +2421,9 @@ document.addEventListener('click', e => {
     case 'v-rca': S.v.rca = +v; S.pag.vendas = 'hoje'; if (!naRaiz()) render({ anim: 'pag-' }); return;
     // 1.14: escolha de fornecedores (Vendas › Fornecedor e Carteira › Mix/SKU) e os produtos do fornecedor
     case 'forn-escolher': abrirEscolhaForn(v); return;
+    // 1.14.1: as escolhas de uma opção só (RCA, cidade, bairro, período da ABC) no mesmo visual
+    case 'esc-abrir': abrirEscolha(v); return;
+    case 'esc-marca': fecharFolha(); aplicarEscolha(b.dataset.id, v); return;
     case 'forn-marca': marcarForn(b); return;
     case 'forn-limpar': {
       S[v].forns = []; S.fornMudou = v;
@@ -2453,7 +2507,7 @@ document.addEventListener('submit', e => {
   if (so && so === raw && !D.CMAP.has(+so)) toast('O cliente ' + so + ' não faz parte da sua base.', true);
 });
 document.addEventListener('input', e => {
-  if (e.target.id === 'forn-busca') {   // 1.14: a busca na escolha de fornecedores só esconde as linhas (o teclado não fecha)
+  if (e.target.id === 'forn-busca' || e.target.id === 'esc-busca') {   // a busca das escolhas só esconde as linhas (o teclado não fecha)
     const q = semAcento(e.target.value).trim();
     document.querySelectorAll('#folha .forn-op').forEach(x => { x.hidden = !!q && !x.dataset.busca.includes(q); });
     return;
